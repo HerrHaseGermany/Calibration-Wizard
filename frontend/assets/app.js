@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-24";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-25";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -283,7 +283,7 @@ function pendingConfigWaitingPage(wizardId, action) {
   workspace.classList.add("menu-mode");
   statusStrip.classList.add("hidden");
   panel.innerHTML = `<span class="kicker">Klipper-Neustart</span><h1>${action === "save" ? "Werte werden gespeichert" : "Werte werden verworfen"}</h1>
-    <p class="lead">Klipper startet neu. Sobald die Firmware wieder bereit ist, öffnet der Wizard automatisch <strong>${esc(definition?.name || wizardId)}</strong>.</p>
+    <p class="lead">${action === "save" ? "Klipper startet neu. Sobald die Firmware wieder bereit ist, kehrt der Wizard automatisch zur Übersicht zurück." : `Klipper startet neu. Sobald die Firmware wieder bereit ist, öffnet der Wizard automatisch <strong>${esc(definition?.name || wizardId)}</strong>.`}</p>
     <div class="running-state"><span class="spinner"></span><strong>Warte auf Klipper…</strong></div>
     <div class="actions">${button("pending-cancel", "Zur Übersicht", "secondary")}</div>`;
   bind("pending-cancel", () => { sessionStorage.removeItem(pendingResolutionStorageKey); resolvingPendingConfig=false; dashboard(); });
@@ -295,9 +295,12 @@ function continueAfterPendingResolution() {
   resolvingPendingConfig = true;
   sessionStorage.removeItem(pendingResolutionStorageKey);
   const wizardId = pending.wizard;
+  const action = pending.action;
   queueMicrotask(() => {
     resolvingPendingConfig = false;
-    if (wizardId === "extruder") welcome(); else openGeneric(wizardId);
+    if (action === "save") dashboard();
+    else if (wizardId === "extruder") welcome();
+    else openGeneric(wizardId);
   });
   return true;
 }

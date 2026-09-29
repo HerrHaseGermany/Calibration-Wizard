@@ -82,6 +82,7 @@ const pairs = [
   ["Vorhandene Werte speichern", "Save existing values"], ["Verwerfen und fortfahren", "Discard and continue"],
   ["Klipper-Neustart", "Klipper restart"], ["Werte werden gespeichert", "Saving values"],
   ["Werte werden verworfen", "Discarding values"], ["Klipper startet neu. Sobald die Firmware wieder bereit ist, öffnet der Wizard automatisch", "Klipper is restarting. As soon as the firmware is ready again, the wizard will automatically open"],
+  ["Klipper startet neu. Sobald die Firmware wieder bereit ist, kehrt der Wizard automatisch zur Übersicht zurück.", "Klipper is restarting. As soon as the firmware is ready again, the wizard will automatically return to the overview."],
   ["Warte auf Klipper…", "Waiting for Klipper…"],
   ["Zur Übersicht", "Back to overview"], ["Zurück", "Back"], ["Abbrechen", "Cancel"], ["Fertig", "Done"],
   ["Kalibrierung einrichten", "Configure calibration"], ["Änderungen prüfen", "Review changes"],
