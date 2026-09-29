@@ -112,7 +112,12 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,107,44
 .notice { padding: 13px 16px; margin-bottom: 18px; border-radius: 10px; border: 1px solid #63313a; background: #2b171c; color: #ffb4ba; }
 .hidden { display: none !important; }
 .workspace.menu-mode { grid-column: 1 / -1; }
-.calibration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 30px; }
+.calibration-phases { display:grid; gap:34px; margin-top:30px; }
+.calibration-phase { display:grid; gap:14px; }
+.phase-heading { display:grid; grid-template-columns:minmax(0,1fr) minmax(240px,.9fr); align-items:end; gap:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+.phase-heading h2 { margin:0; font-size:22px; letter-spacing:-.02em; }
+.phase-heading p { margin:0; font-size:13px; text-align:right; }
+.calibration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .calibration-card { min-height: 190px; padding: 22px; border: 1px solid var(--border); border-radius: 15px; background: var(--card); display: flex; flex-direction: column; align-items: flex-start; text-align: left; color: var(--text); }
 .calibration-card { transition: .18s ease; }
 .calibration-card:hover { border-color: var(--accent); transform: translateY(-2px); }
@@ -178,6 +183,8 @@ a { color: #ff9a6e; }
   .panel { min-height: 0; padding: 26px 22px; }
   .detail-grid, .result-grid { grid-template-columns: 1fr; }
   .calibration-grid { grid-template-columns: 1fr; }
+  .phase-heading { grid-template-columns:1fr; gap:6px; }
+  .phase-heading p { text-align:left; }
   .printer-readiness { align-items:stretch; flex-direction:column; }
   .jog-grid { grid-template-columns: repeat(2, 1fr); }
   .setup-grid { grid-template-columns:1fr; }

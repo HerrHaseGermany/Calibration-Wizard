@@ -42,17 +42,17 @@ def load_wizard_definitions(root: Path | None = None) -> tuple[WizardDefinition,
     if not definitions:
         raise RuntimeError(f"No wizard manifests found below {root}")
     order = {
-        "extruder": 0,
-        "pid": 1,
-        "flow": 2,
-        "pressure_advance": 3,
-        "probe_offset": 4,
-        "screws_tilt": 5,
-        "bed_screws": 6,
-        "z_tilt": 7,
-        "quad_gantry_level": 8,
-        "bed_mesh": 9,
-        "input_shaper": 10,
+        "pid": 0,
+        "extruder": 1,
+        "bed_screws": 2,
+        "screws_tilt": 3,
+        "z_tilt": 4,
+        "quad_gantry_level": 5,
+        "probe_offset": 6,
+        "bed_mesh": 7,
+        "flow": 8,
+        "input_shaper": 9,
+        "pressure_advance": 10,
     }
     return tuple(sorted(definitions, key=lambda item: order.get(item.id, 99)))
 

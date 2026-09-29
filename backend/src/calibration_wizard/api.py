@@ -107,7 +107,8 @@ def create_app(
 
     @app.get("/api/wizards/extruder")
     async def extruder_status():
-        return {"definition": WIZARDS[0], "session": wizard.session}
+        definition = next(item for item in WIZARDS if item.id == "extruder")
+        return {"definition": definition, "session": wizard.session}
 
     @app.post("/api/wizards/extruder/start")
     async def start(payload: StartRequest, request: Request):

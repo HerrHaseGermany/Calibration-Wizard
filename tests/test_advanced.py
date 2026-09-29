@@ -103,6 +103,7 @@ def test_extruder_specific_start_route_wins_over_generic_route(tmp_path: Path):
     assert response.json()["extruder"] == "extruder"
     restored = client.get("/api/wizards/extruder")
     assert restored.status_code == 200
+    assert restored.json()["definition"]["id"] == "extruder"
     assert restored.json()["session"]["id"] == response.json()["id"]
 
 

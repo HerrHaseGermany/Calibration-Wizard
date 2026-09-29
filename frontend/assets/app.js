@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-18";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-19";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -119,7 +119,7 @@ function dashboard() {
   statusStrip.classList.add("hidden");
   clearError();
   const ready = printerIsReady();
-  const cards = wizards.map((wizard) => {
+  const card = (wizard) => {
     const configured = wizard.configuration?.point_count ? `<span class="configured">${wizard.configuration.point_count} Punkte erkannt</span>` : "";
     const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${ready ? "" : "disabled"}>Einrichten</button>` : "";
     if (wizard.available) {
@@ -131,11 +131,23 @@ function dashboard() {
       <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
       <span class="unavailable-reason">${wizard.availability_reason || "Auf diesem Drucker nicht verfügbar"}</span>
       <div class="card-buttons">${setup}<span class="planned">Nicht konfiguriert</span></div></div>`;
+  };
+  const phases = [
+    {title:"1 · Temperatur & Extrusion", copy:"Schaffe zuerst stabile thermische und mechanische Grundlagen.", ids:["pid","extruder"]},
+    {title:"2 · Mechanik, Gantry & Z", copy:"Wähle die zu deinem Drucker passenden Ausrichtungsverfahren und erstelle das Mesh zuletzt.", ids:["bed_screws","screws_tilt","z_tilt","quad_gantry_level","probe_offset","bed_mesh"]},
+    {title:"3 · Druckqualität", copy:"Optimiere Materialfluss und Bewegungsdynamik erst nach der Grundkalibrierung.", ids:["flow","input_shaper","pressure_advance"]},
+  ];
+  const cards = phases.map(phase=>{
+    const entries=phase.ids.map(id=>wizards.find(wizard=>wizard.id===id)).filter(wizard=>wizard?.available);
+    if(!entries.length)return "";
+    return `<section class="calibration-phase"><div class="phase-heading"><h2>${phase.title}</h2><p>${phase.copy}</p></div><div class="calibration-grid">${entries.map(card).join("")}</div></section>`;
   }).join("");
+  const unavailable=wizards.filter(wizard=>!wizard.available);
+  const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h2>Nicht verfügbar</h2><p>Diese Abläufe werden automatisch einsortiert, sobald die benötigte Hardware und Klipper-Konfiguration erkannt werden.</p></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
   panel.innerHTML = `<span class="kicker">Kalibrierzentrale</span><h1>Kalibrierung auswählen</h1>
     <p class="lead">Jeder Ablauf prüft den Druckerzustand serverseitig. Dauerhafte Änderungen werden erst nach einer separaten Bestätigung gespeichert.</p>
     ${printerReadinessNotice()}
-    <div class="calibration-grid">${cards}</div>`;
+    <div class="calibration-phases">${cards}${unavailableCards}</div>`;
   document.querySelectorAll("[data-wizard]").forEach((card) => card.addEventListener("click", () => {
     const id = card.dataset.wizard;
     if (id === "extruder") welcome(); else openGeneric(id);

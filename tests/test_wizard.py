@@ -1,7 +1,23 @@
 import pytest
 from calibration_wizard.models import WizardState
 from calibration_wizard.printer import MockPrinter
-from calibration_wizard.wizard import ExtruderWizard, WizardError
+from calibration_wizard.wizard import WIZARDS, ExtruderWizard, WizardError
+
+
+def test_wizards_follow_calibration_dependency_order():
+    assert [wizard.id for wizard in WIZARDS] == [
+        "pid",
+        "extruder",
+        "bed_screws",
+        "screws_tilt",
+        "z_tilt",
+        "quad_gantry_level",
+        "probe_offset",
+        "bed_mesh",
+        "flow",
+        "input_shaper",
+        "pressure_advance",
+    ]
 
 
 async def heated_wizard():
