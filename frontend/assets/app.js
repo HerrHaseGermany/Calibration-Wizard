@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-15";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-17";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -16,6 +16,27 @@ let wizards = [];
 let uiStep = 0;
 let activeWizard = null;
 let isOverview = true;
+
+function printerIsReady() {
+  return Boolean(printer?.connected && printer.state === "ready");
+}
+
+function printerReadinessKey(value = printer) {
+  return `${Boolean(value?.connected)}|${value?.state || "unknown"}|${value?.state_message || ""}`;
+}
+
+function printerReadinessNotice() {
+  if (printerIsReady()) return "";
+  const state = printer?.connected ? (printer.state || "unknown") : "disconnected";
+  const copy = {
+    shutdown: "Klipper befindet sich im Shutdown-Zustand. Prüfe den Drucker und die Fehlermeldung in Mainsail. Führe einen Firmware-Neustart erst aus, wenn die Ursache behoben ist.",
+    error: "Klipper meldet einen Fehler. Prüfe die Fehlermeldung in Mainsail und behebe die Ursache, bevor du fortfährst.",
+    startup: "Klipper startet gerade. Die Kalibrierungen werden automatisch freigegeben, sobald die Firmware bereit ist.",
+    disconnected: "Der Calibration Wizard kann Klipper derzeit nicht erreichen. Prüfe die Verbindung und den Zustand in Mainsail.",
+  }[state] || `Klipper ist momentan nicht bereit (Zustand: ${esc(state)}). Prüfe den Drucker in Mainsail.`;
+  const detail = printer?.state_message ? `<p class="printer-state-message">${esc(printer.state_message)}</p>` : "";
+  return `<aside class="printer-readiness" role="alert"><div><strong>Klipper ist nicht bereit</strong><p>${copy}</p>${detail}</div><a class="button secondary" href="/">Zu Mainsail</a></aside>`;
+}
 
 function setOverviewState(current) {
   isOverview = current;
@@ -83,13 +104,14 @@ function dashboard() {
   workspace.classList.add("menu-mode");
   statusStrip.classList.add("hidden");
   clearError();
+  const ready = printerIsReady();
   const cards = wizards.map((wizard) => {
     const configured = wizard.configuration?.point_count ? `<span class="configured">${wizard.configuration.point_count} Punkte erkannt</span>` : "";
-    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}">Einrichten</button>` : "";
+    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${ready ? "" : "disabled"}>Einrichten</button>` : "";
     if (wizard.available) {
-      return `<div class="calibration-card">
+      return `<div class="calibration-card ${ready ? "" : "printer-blocked"}">
         <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
-        ${configured}<div class="card-buttons"><button class="card-start" type="button" data-wizard="${wizard.id}">Jetzt starten →</button>${setup}</div></div>`;
+        ${configured}<div class="card-buttons"><button class="card-start" type="button" data-wizard="${wizard.id}" ${ready ? "" : "disabled"}>Jetzt starten →</button>${setup}</div></div>`;
     }
     return `<div class="calibration-card unavailable">
       <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
@@ -98,6 +120,7 @@ function dashboard() {
   }).join("");
   panel.innerHTML = `<span class="kicker">Kalibrierzentrale</span><h1>Kalibrierung auswählen</h1>
     <p class="lead">Jeder Ablauf prüft den Druckerzustand serverseitig. Dauerhafte Änderungen werden erst nach einer separaten Bestätigung gespeichert.</p>
+    ${printerReadinessNotice()}
     <div class="calibration-grid">${cards}</div>`;
   document.querySelectorAll("[data-wizard]").forEach((card) => card.addEventListener("click", () => {
     const id = card.dataset.wizard;
@@ -537,6 +560,7 @@ document.querySelector("#cancel").addEventListener("click", async () => {
 });
 
 function updateStatus(data) {
+  const previousReadiness = printerReadinessKey();
   printer = data.printer;
   if (activeWizard === "extruder" && data.session) session = data.session;
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
@@ -557,6 +581,7 @@ function updateStatus(data) {
   document.querySelector("#klipper-state").textContent = printer.state;
   connection.className = `connection ${printer.connected ? "online" : "offline"}`;
   document.querySelector("#connection").textContent = printer.connected ? "Printer connected" : "Printer offline";
+  if (isOverview && previousReadiness !== printerReadinessKey()) dashboard();
 }
 
 function connect() {
@@ -564,7 +589,13 @@ function connect() {
   wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(wsUrl);
   socket.onmessage = (event) => updateStatus(JSON.parse(event.data));
-  socket.onclose = () => { connection.className = "connection offline"; document.querySelector("#connection").textContent = "Reconnecting"; setTimeout(connect, 2000); };
+  socket.onclose = () => {
+    connection.className = "connection offline";
+    document.querySelector("#connection").textContent = "Reconnecting";
+    if (printer) printer = {...printer, connected:false, state:"disconnected", state_message:""};
+    if (isOverview) dashboard();
+    setTimeout(connect, 2000);
+  };
 }
 
 Promise.all([

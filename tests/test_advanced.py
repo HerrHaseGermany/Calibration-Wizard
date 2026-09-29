@@ -170,6 +170,10 @@ def test_emergency_stop_uses_immediate_printer_endpoint(tmp_path: Path):
     assert printer.data.state == "shutdown"
     assert printer.data.target == 0
     assert printer.data.bed_target == 0
+    status = client.get("/api/status")
+    assert status.status_code == 200
+    assert status.json()["printer"]["state"] == "shutdown"
+    assert status.json()["printer"]["state_message"] == "Emergency stop triggered"
 
 
 def test_pressure_advance_can_be_inserted_with_backup(tmp_path: Path):
