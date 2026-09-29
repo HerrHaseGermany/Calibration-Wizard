@@ -50,7 +50,7 @@ const pairs = [
   ["Koordinaten müssen zur Mechanik, zum Probe-Offset und zu einem freien Verfahrweg passen. Falsche Werte können eine Kollision verursachen.", "Coordinates must match the mechanics, probe offset, and a clear travel path. Incorrect values can cause a collision."],
   ["Diese normalisierten Werte werden in den vorhandenen Abschnitt geschrieben; andere Schlüssel bleiben erhalten.", "These normalized values will be written to the existing section; other keys are preserved."],
   ["Klipper wird neu gestartet. Nach dem erneuten Verbinden wird die Kalibrierung automatisch neu bewertet.", "Klipper is restarting. After reconnecting, calibration availability is evaluated automatically."],
-  ["Kalibrierzentrale", "Calibration center"], ["Kalibrierung auswählen", "Choose a calibration"],
+  ["Kalibrierzentrale", "Calibration center"],
   ["Sprache", "Language"], ["In Klipper fehlt:", "Missing in Klipper:"],
   ["Quad Gantry Level", "Quad Gantry Level"],
   ["Übersicht", "Overview"], ["Zur Kalibrierübersicht", "Back to calibration overview"],

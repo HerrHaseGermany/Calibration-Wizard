@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-21";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-22";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -145,7 +145,7 @@ function dashboard() {
   }).join("");
   const unavailable=wizards.filter(wizard=>!wizard.available);
   const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h2>Nicht verfügbar</h2></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
-  panel.innerHTML = `<span class="kicker">Kalibrierzentrale</span><h1>Kalibrierung auswählen</h1>
+  panel.innerHTML = `<span class="kicker">Kalibrierzentrale</span>
     ${printerReadinessNotice()}
     <div class="calibration-phases">${cards}${unavailableCards}</div>`;
   const openWizard = (card) => {
