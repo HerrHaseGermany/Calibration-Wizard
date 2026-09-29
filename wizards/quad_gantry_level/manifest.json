@@ -1,0 +1,8 @@
+{
+  "id": "quad_gantry_level",
+  "name": "Quad Gantry Level",
+  "description": "Gantry eines CoreXY-Druckers über vier unabhängige Z-Antriebe ausrichten.",
+  "version": 1,
+  "available": true,
+  "requirements": ["quad_gantry_level", "QUAD_GANTRY_LEVEL"]
+}

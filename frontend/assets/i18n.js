@@ -1,0 +1,147 @@
+export const messages = {
+  de: {
+    steps: ["Vorbereiten", "Heizen", "Markieren", "Extrudieren", "Messen", "Berechnen", "Prüfen", "Speichern"],
+    welcomeTitle: "Extruder kalibrieren",
+    welcomeBody: "Kalibriere, wie viel Filament eine volle Extruderumdrehung fördert. Der Assistent liest die aktuelle Rotationsdistanz aus Klipper und speichert nie ohne deine Bestätigung.",
+  },
+  en: {
+    steps: ["Prepare", "Heat", "Mark", "Extrude", "Measure", "Calculate", "Verify", "Save"],
+    welcomeTitle: "Extruder calibration",
+    welcomeBody: "Calibrate how much filament one full extruder rotation moves. The wizard reads the current rotation distance from Klipper and never saves a change without your confirmation.",
+  },
+};
+
+const pairs = [
+  ["Jeder Ablauf prüft den Druckerzustand serverseitig. Dauerhafte Änderungen werden erst nach einer separaten Bestätigung gespeichert.", "Every workflow validates printer state on the server. Permanent changes are saved only after a separate confirmation."],
+  ["Aktiven Extruder vermessen und seine Rotationsdistanz kalibrieren.", "Measure the active extruder and calibrate its rotation distance."],
+  ["Hotend oder Heizbett auf eine stabile Zieltemperatur abstimmen.", "Tune the hotend or heated bed for a stable target temperature."],
+  ["Wandstärken messen und den Extrusionsfaktor für den Slicer berechnen.", "Measure wall thickness and calculate the slicer extrusion multiplier."],
+  ["Testturm vorbereiten, optimale Höhe auswerten und Wert sichern.", "Prepare a test tower, evaluate the best height, and save the value."],
+  ["Z-Abstand mit Klippers Papiermethode sicher kalibrieren.", "Safely calibrate Z offset with Klipper's paper method."],
+  ["Drehrichtung und Korrektur jeder Bettschraube automatisch ermitteln.", "Automatically determine direction and adjustment for every bed screw."],
+  ["Gantry mit zwei oder mehr unabhängig angetriebenen Z-Motoren ausrichten.", "Level a gantry with two or more independently driven Z motors."],
+  ["Gantry eines CoreXY-Druckers über vier unabhängige Z-Antriebe ausrichten.", "Level a CoreXY gantry using four independent Z drives."],
+  ["Druckbett referenzieren, vollständig vermessen und das Mesh prüfen.", "Home the printer, measure the full bed, and review the mesh."],
+  ["Resonanzen mit einem Beschleunigungssensor messen und Shaper bestimmen.", "Measure resonances with an accelerometer and determine input shapers."],
+  ["Kein Resonanzsensor konfiguriert. Schließe einen Beschleunigungssensor an und konfiguriere [resonance_tester]; danach wird dieser Ablauf automatisch aktiviert.", "No resonance sensor is configured. Connect an accelerometer and configure [resonance_tester]; this workflow will then activate automatically."],
+  ["Auf diesem Drucker nicht verfügbar", "Not available on this printer"],
+  ["Der Drucker darf nicht drucken oder pausiert sein. Bewegungen starten erst nach deinem Klick.", "The printer must not be printing or paused. Motion starts only after your click."],
+  ["Das Bett wird zuerst referenziert und danach mit deiner bestehenden Klipper-Konfiguration vermessen.", "The printer is homed first, then the bed is measured using your existing Klipper configuration."],
+  ["Klipper ermittelt für jede Schraube Drehrichtung und Betrag. Nach jeder Korrektur kannst du erneut messen.", "Klipper calculates direction and amount for every screw. You can measure again after each adjustment."],
+  ["Mit PROBE_CALIBRATE und feinen TESTZ-Schritten stellst du den Papierabstand ein.", "Use PROBE_CALIBRATE and fine TESTZ steps to set the paper gap."],
+  ["Klipper vermisst die konfigurierten Punkte und richtet zwei oder mehr unabhängige Z-Antriebe aus.", "Klipper probes the configured points and levels two or more independent Z drives."],
+  ["Klipper vermisst vier Punkte und richtet die Gantry über vier unabhängige Z-Antriebe aus.", "Klipper probes four points and levels the gantry with four independent Z drives."],
+  ["Prüfe, dass der Bauraum frei ist. Der Drucker führt anschließend G28 aus.", "Make sure the build volume is clear. The printer will then run G28."],
+  ["Klipper fährt alle konfigurierten Messpunkte ab und korrigiert die unabhängigen Z-Antriebe iterativ.", "Klipper probes all configured points and iteratively corrects the independent Z drives."],
+  ["Klipper fährt alle in [bed_mesh] definierten Punkte ab. Dieser Vorgang kann mehrere Minuten dauern.", "Klipper probes every point defined in [bed_mesh]. This may take several minutes."],
+  ["Klipper fährt die konfigurierten Schraubenpositionen an und berechnet die Korrekturen.", "Klipper probes the configured screw positions and calculates the adjustments."],
+  ["Stelle die Schrauben bei stillstehendem Drucker ein und wiederhole danach die Messung. Eine mechanische Änderung kann eine erneute Z‑Offset-Kalibrierung erfordern.", "Adjust the screws while the printer is stationary, then repeat the measurement. A mechanical change may require Z-offset recalibration."],
+  ["Klipper positioniert die Düse und startet PROBE_CALIBRATE. Lege danach ein normales Blatt Papier unter die saubere Düse.", "Klipper positions the nozzle and starts PROBE_CALIBRATE. Then place a normal sheet of paper under the clean nozzle."],
+  ["Bewege Z, bis sich das Papier mit leichtem Widerstand bewegen lässt. Negative Werte senken die Düse. Beginne grob und werde dann feiner.", "Move Z until the paper slides with light resistance. Negative values lower the nozzle. Start coarse, then use finer steps."],
+  ["Wähle den Heizer und eine typische Drucktemperatur. Nach dem ersten Aufheizen schaltet Klipper den Heizer mehrfach knapp ober- und unterhalb der Zieltemperatur um.", "Choose the heater and a typical printing temperature. After the initial heat-up, Klipper switches the heater several times just above and below the target temperature."],
+  ["Während der Messung werden hohe Temperaturen erreicht. Nach dem ersten Aufheizen folgen mehrere kurze Heiz- und Abkühlphasen um die Zieltemperatur. Lasse den Drucker nicht unbeaufsichtigt.", "High temperatures are reached during measurement. After the initial heat-up, several short heating and cooling phases follow around the target temperature. Do not leave the printer unattended."],
+  ["Während der Messung werden hohe Temperaturen erreicht. Lasse den Drucker nicht unbeaufsichtigt.", "High temperatures are reached during measurement. Do not leave the printer unattended."],
+  ["Der Klipper-Testturm verändert Pressure Advance über die Höhe. Wähle deinen Extruder-Typ.", "The Klipper test tower changes Pressure Advance with height. Select your extruder type."],
+  ["Miss vom Boden bis zu der Höhe, an der die Ecken am gleichmäßigsten sind.", "Measure from the base to the height where the corners look most consistent."],
+  ["Drucke den bereitgestellten Testkörper mit einer Wand und ohne Deckschichten. Trage danach Sollstärke und vier Messungen ein.", "Print the provided test model with one wall and no top layers. Then enter the target thickness and four measurements."],
+  ["Der Sensor wird zuerst abgefragt. Danach erzeugt Klipper starke, schnelle Schwingungen und bestimmt passende Shaper für X und Y.", "The sensor is queried first. Klipper then creates strong, rapid vibrations and determines suitable shapers for X and Y."],
+  ["Prüfe Sensorbefestigung, Kabelweg und freien Bauraum. Bleibe während der Messung am Drucker.", "Check sensor mounting, cable routing, and a clear build volume. Stay with the printer during measurement."],
+  ["Der Drucker bewegt sich schnell und laut. Stoppe ihn sofort bei lockeren Teilen, Zug am Sensorkabel oder ungewöhnlichen Geräuschen.", "The printer moves quickly and loudly. Stop it immediately if parts are loose, the sensor cable is strained, or noises are unusual."],
+  ["Lege die Geometrie für diesen Drucker fest.", "Define the geometry for this printer."],
+  ["Koordinaten müssen zur Mechanik, zum Probe-Offset und zu einem freien Verfahrweg passen. Falsche Werte können eine Kollision verursachen.", "Coordinates must match the mechanics, probe offset, and a clear travel path. Incorrect values can cause a collision."],
+  ["Diese normalisierten Werte werden in den vorhandenen Abschnitt geschrieben; andere Schlüssel bleiben erhalten.", "These normalized values will be written to the existing section; other keys are preserved."],
+  ["Klipper wird neu gestartet. Nach dem erneuten Verbinden wird die Kalibrierung automatisch neu bewertet.", "Klipper is restarting. After reconnecting, calibration availability is evaluated automatically."],
+  ["Kalibrierzentrale", "Calibration center"], ["Kalibrierung auswählen", "Choose a calibration"],
+  ["Sprache", "Language"], ["In Klipper fehlt:", "Missing in Klipper:"],
+  ["Quad Gantry Level", "Quad Gantry Level"],
+  ["Übersicht", "Overview"], ["Zur Kalibrierübersicht", "Back to calibration overview"],
+  ["Zum Mainsail-Dashboard", "Go to Mainsail dashboard"],
+  ["Drucker sofort anhalten", "Stop printer immediately"], ["NOT-AUS", "EMERGENCY STOP"],
+  ["GESTOPPT", "STOPPED"], ["STOPP…", "STOPPING…"],
+  ["NOT-AUS ausgelöst. Klipper befindet sich im Shutdown-Zustand. Prüfe den Drucker und führe erst danach einen Firmware-Neustart aus.", "EMERGENCY STOP triggered. Klipper is in shutdown state. Check the printer before performing a firmware restart."],
+  ["Farbschema wechseln", "Change color scheme"], ["Helles Farbschema", "Light color scheme"], ["Dunkles Farbschema", "Dark color scheme"],
+  ["Farbschema: System", "Color scheme: System"], ["Farbschema: Hell", "Color scheme: Light"], ["Farbschema: Dunkel", "Color scheme: Dark"],
+  ["Jetzt starten", "Start now"], ["Einrichten", "Configure"], ["Nicht konfiguriert", "Not configured"],
+  ["Zur Übersicht", "Back to overview"], ["Zurück", "Back"], ["Abbrechen", "Cancel"], ["Fertig", "Done"],
+  ["Kalibrierung einrichten", "Configure calibration"], ["Änderungen prüfen", "Review changes"],
+  ["Einrichtung speichern", "Save setup"], ["Einrichtung übernommen", "Setup applied"],
+  ["Dauerhafte Änderung", "Permanent change"], ["Gespeichert", "Saved"], ["Abgeschlossen", "Complete"],
+  ["Ergebnis", "Result"], ["Vorbereiten", "Prepare"], ["Referenzieren", "Home axes"],
+  ["Vermessen", "Measure"], ["Speichern", "Save"], ["Messen", "Measure"], ["Berechnen", "Calculate"],
+  ["Ausrichten", "Level"], ["Sensor prüfen", "Check sensor"], ["Prüfen", "Review"],
+  ["Druckstatus", "Print status"], ["Achsen", "Axes"], ["nicht referenziert", "not homed"],
+  ["Drucker verbunden", "Printer connected"], ["Drucker offline", "Printer offline"],
+  ["Verbindung wird hergestellt", "Connecting"], ["Verbindung wird wiederhergestellt", "Reconnecting"],
+  ["Extruder kalibrieren", "Extruder calibration"], ["PID-Kalibrierung", "PID calibration"],
+  ["Flow / Extrusionsfaktor", "Flow / extrusion multiplier"], ["Bettschrauben", "Bed screws"],
+  ["Manuelle Bettschrauben", "Manual bed screws"], ["Beliebig viele Bettschrauben mit Klippers manueller Papiermethode einstellen.", "Adjust any number of bed screws with Klipper's manual paper method."],
+  ["Probe Z-Offset", "Probe Z offset"], ["Bed Mesh", "Bed mesh"], ["Kalibrierung starten", "Start calibration"],
+  ["Ziel", "Target"], ["Klipper-Zustand", "Klipper state"],
+  ["Jetzt referenzieren", "Home now"], ["Alle Achsen referenzieren", "Home all axes"],
+  ["Bewegung", "Motion"], ["Messbewegung", "Measurement motion"], ["Druckbett vermessen", "Measure the print bed"],
+  ["Bed Mesh starten", "Start bed mesh"], ["Vermessung läuft", "Measurement running"],
+  ["Schraubenpositionen messen", "Measure screw positions"], ["Schrauben einstellen", "Adjust screws"],
+  ["Erneut messen", "Measure again"], ["Manuelle Z-Kalibrierung starten", "Start manual Z calibration"],
+  ["Papier-Test", "Paper test"], ["Düse schrittweise absenken", "Lower nozzle step by step"],
+  ["Position übernehmen", "Accept position"], ["Heizer wählen", "Choose heater"], ["PID kalibrieren", "Calibrate PID"],
+  ["Heizer", "Heater"], ["Heizbett", "Heated bed"], ["Zieltemperatur", "Target temperature"],
+  ["Ausgewählter Heizer", "Selected heater"], ["Gewählte Zieltemperatur", "Selected target temperature"],
+  ["PID-Tuning starten", "Start PID tuning"], ["Messung ausführen", "Run measurement"],
+  ["Heizzyklen", "Heating cycles"], ["PID-Tuning bereit", "PID tuning ready"],
+  ["Testturm", "Test tower"], ["Extruder-Typ", "Extruder type"], ["Slicer & Druck", "Slicer & print"],
+  ["Testturm drucken", "Print test tower"], ["Tuning Tower aktivieren", "Enable tuning tower"],
+  ["Auswertung", "Evaluation"], ["Beste Höhe messen", "Measure best height"], ["Höhe", "Height"],
+  ["Temporär anwenden", "Apply temporarily"], ["Slicer-Kalibrierung", "Slicer calibration"],
+  ["Sollstärke", "Target thickness"], ["Aktueller Flow", "Current flow"],
+  ["Flow-Testkörper", "Flow test model"], ["Für jeden Slicer geeignet. Das Modell wird erst durch die folgenden Slicer-Einstellungen zum einwandigen Messkörper.", "Suitable for any slicer. The following slicer settings turn the model into a single-wall test object."],
+  ["STL herunterladen", "Download STL"], ["Slicer-Einstellungen", "Slicer settings"],
+  ["Wände / Perimeter", "Walls / perimeters"], ["Deckschichten", "Top layers"], ["Bodenschichten", "Bottom layers"], ["Linienbreite", "Line width"],
+  ["bei 0,4-mm-Düse", "with a 0.4 mm nozzle"], ["Spiral-/Vasenmodus", "Spiral/vase mode"], ["deaktiviert", "disabled"],
+  ["Miss jede Seitenwand mittig, deutlich entfernt von Ecken und untersten Schichten. Verwende bei einer anderen Linienbreite diesen Wert als Sollstärke.", "Measure each side wall in the center, well away from corners and the bottom layers. If you use a different line width, enter that value as the target thickness."],
+  ["Extrusionsfaktor berechnen", "Calculate extrusion multiplier"], ["Mittlere gemessene Wandstärke", "Average measured wall thickness"],
+  ["Beschleunigungssensor", "Accelerometer"], ["X und Y", "X and Y"], ["Nur X", "X only"], ["Nur Y", "Y only"],
+  ["Starke Schwingungen", "Strong vibrations"], ["Resonanzmessung starten", "Start resonance measurement"],
+  ["Ausrichtung läuft", "Leveling running"], ["Automatische Ausrichtung", "Automatic leveling"],
+  ["Punkte erkannt", "points detected"], ["Zulässiger Verfahrbereich laut Klipper", "Travel range reported by Klipper"],
+  ["Mesh-Minimum", "Mesh minimum"], ["Mesh-Maximum", "Mesh maximum"], ["Messpunkte", "Probe points"],
+  ["Positionen der Z-Antriebe", "Z actuator positions"], ["Probe-Messpunkte", "Probe points"],
+  ["Gantry-Ecken", "Gantry corners"], ["Schraubenpositionen", "Screw positions"],
+  ["Punkt hinzufügen", "Add point"], ["Punkt entfernen", "Remove point"], ["Schraubengewinde", "Screw thread"],
+  ["Vorschau", "Preview"], ["Quelle", "Source"], ["Backup", "Backup"], ["Schraube", "Screw"],
+  ["Aktueller Extruder", "Current extruder"], ["Aktuelle Rotationsdistanz", "Current rotation distance"],
+  ["Kalibrierung starten", "Start calibration"], ["Extruder aufheizen", "Heat the extruder"],
+  ["Zieltemperatur", "Target temperature"], ["Extruder heizen", "Heat extruder"], ["Weiter", "Continue"],
+  ["Filament markieren", "Mark the filament"], ["Markierungsabstand", "Mark distance"],
+  ["Nächste Extrusion", "Next extrusion"], ["Markierung ist gesetzt", "Mark is ready"],
+  ["Reststrecke messen", "Measure the remainder"], ["Reststrecke", "Remaining distance"],
+  ["Ergebnis prüfen", "Check result"], ["Berechnetes Ergebnis", "Calculated result"],
+  ["Messung ist plausibel", "Measurement looks plausible"], ["Bitte Messung prüfen", "Please check the measurement"],
+  ["Angefordert", "Requested"], ["Tatsächlich", "Actual"], ["Abweichung", "Deviation"],
+  ["Temporär anwenden", "Apply temporarily"], ["Erneut messen", "Measure again"],
+  ["Neuen Wert prüfen", "Verify the new value"], ["Prüfung überspringen", "Skip verification"],
+  ["Konfiguration speichern", "Save configuration"], ["Alter Wert", "Old value"], ["Neuer Wert", "New value"],
+  ["Kalibrierung gespeichert", "Calibration saved"], ["Kalibrierung abbrechen", "Cancel calibration"],
+];
+
+let locale = localStorage.getItem("kcw-language") || (navigator.language?.toLowerCase().startsWith("de") ? "de" : "en");
+if (!messages[locale]) locale = "en";
+
+export const getLocale = () => locale;
+export const setLocale = (value) => { locale = messages[value] ? value : "en"; localStorage.setItem("kcw-language", locale); document.documentElement.lang = locale; };
+export const t = (key) => messages[locale][key] ?? messages.en[key] ?? key;
+
+function translate(value) {
+  const direction = locale === "en" ? pairs : pairs.map(([de,en]) => [en,de]);
+  const replacements = new Map(direction);
+  const pattern = [...replacements.keys()].sort((a,b)=>b.length-a.length).map(value=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|");
+  return pattern ? value.replace(new RegExp(pattern,"g"), match=>replacements.get(match)) : value;
+}
+
+export function localize(root=document.body) {
+  if (!root) return;
+  document.documentElement.lang = locale;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node=>{ if(node.parentElement?.closest("code, pre, script, style")) return; const changed=translate(node.nodeValue); if(changed!==node.nodeValue) node.nodeValue=changed; });
+  root.querySelectorAll?.("[placeholder],[aria-label],[title]").forEach(element=>["placeholder","aria-label","title"].forEach(attribute=>{if(element.hasAttribute(attribute)){const value=element.getAttribute(attribute);const changed=translate(value);if(changed!==value)element.setAttribute(attribute,changed);}}));
+}

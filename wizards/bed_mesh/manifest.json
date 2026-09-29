@@ -1,0 +1,8 @@
+{
+  "id": "bed_mesh",
+  "name": "Bed mesh",
+  "description": "Druckbett referenzieren, vollständig vermessen und das Mesh prüfen.",
+  "version": 1,
+  "available": true,
+  "requirements": ["bed_mesh", "BED_MESH_CALIBRATE"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "pid",
+  "name": "PID calibration",
+  "description": "Hotend oder Heizbett auf eine stabile Zieltemperatur abstimmen.",
+  "version": 1,
+  "available": true,
+  "requirements": ["PID_CALIBRATE"]
+}

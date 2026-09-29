@@ -1,0 +1,12 @@
+# Managed by Klipper Calibration Wizard. User settings belong outside this file.
+[update_manager klipper-calibration-wizard]
+type: git_repo
+channel: dev
+path: @PROJECT_DIR@
+origin: @GIT_ORIGIN@
+primary_branch: @GIT_BRANCH@
+virtualenv: @PROJECT_DIR@/.venv
+requirements: requirements.txt
+managed_services: klipper-calibration-wizard
+info_tags:
+  desc=Klipper Calibration Wizard

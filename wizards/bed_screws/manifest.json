@@ -1,0 +1,8 @@
+{
+  "id": "bed_screws",
+  "name": "Manuelle Bettschrauben",
+  "description": "Beliebig viele Bettschrauben mit Klippers manueller Papiermethode einstellen.",
+  "version": 1,
+  "available": true,
+  "requirements": ["bed_screws", "BED_SCREWS_ADJUST"]
+}

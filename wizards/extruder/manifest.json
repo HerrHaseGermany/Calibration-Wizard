@@ -1,0 +1,17 @@
+{
+  "id": "extruder",
+  "name": "Extruder calibration",
+  "description": "Aktiven Extruder vermessen und seine Rotationsdistanz kalibrieren.",
+  "version": 1,
+  "available": true,
+  "requirements": ["extruder", "SET_EXTRUDER_ROTATION_DISTANCE"],
+  "defaults": {
+    "mark_distance": 120.0,
+    "commanded_extrusion": 100.0,
+    "extrusion_speed": 1.0
+  },
+  "states": [
+    "IDLE", "HEATING", "READY", "RUNNING", "WAITING_FOR_MEASUREMENT",
+    "CALCULATED", "APPLIED", "VERIFYING", "COMPLETE", "ERROR", "CANCELLED"
+  ]
+}

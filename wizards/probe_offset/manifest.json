@@ -1,0 +1,8 @@
+{
+  "id": "probe_offset",
+  "name": "Probe Z-Offset",
+  "description": "Z-Abstand mit Klippers Papiermethode sicher kalibrieren.",
+  "version": 1,
+  "available": true,
+  "requirements": ["probe", "PROBE_CALIBRATE"]
+}

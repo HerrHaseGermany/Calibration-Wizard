@@ -1,0 +1,8 @@
+{
+  "id": "z_tilt",
+  "name": "Z-Tilt",
+  "description": "Gantry mit zwei oder mehr unabhängig angetriebenen Z-Motoren ausrichten.",
+  "version": 1,
+  "available": true,
+  "requirements": ["z_tilt", "Z_TILT_ADJUST"]
+}

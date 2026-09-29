@@ -1,0 +1,8 @@
+{
+  "id": "input_shaper",
+  "name": "Input Shaper",
+  "description": "Resonanzen mit einem Beschleunigungssensor messen und Shaper bestimmen.",
+  "version": 1,
+  "available": true,
+  "requirements": ["resonance_tester", "ACCELEROMETER_QUERY", "SHAPER_CALIBRATE"]
+}

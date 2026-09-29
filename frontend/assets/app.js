@@ -1,0 +1,576 @@
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-15";
+
+const base = new URL("./api/", window.location.href);
+const panel = document.querySelector("#panel");
+const notice = document.querySelector("#notice");
+const progress = document.querySelector("#progress");
+const connection = document.querySelector(".connection");
+const rail = document.querySelector("#rail");
+const workspace = document.querySelector(".workspace");
+const statusStrip = document.querySelector("#status-strip");
+const homeButton = document.querySelector("#home-button");
+const emergencyButton = document.querySelector("#emergency-button");
+let printer = null;
+let session = null;
+let wizards = [];
+let uiStep = 0;
+let activeWizard = null;
+let isOverview = true;
+
+function setOverviewState(current) {
+  isOverview = current;
+  homeButton.disabled = current;
+  if (current) homeButton.setAttribute("aria-current", "page");
+  else homeButton.removeAttribute("aria-current");
+}
+
+const language = document.querySelector("#language");
+language.value = getLocale();
+setLocale(getLocale());
+const localizationObserver = new MutationObserver((records) => records.forEach((record) => record.addedNodes.forEach((node) => { if (node.nodeType === Node.ELEMENT_NODE) localize(node); else if (node.parentElement) localize(node.parentElement); })));
+localizationObserver.observe(document.body, {childList:true,subtree:true});
+language.addEventListener("change",()=>{setLocale(language.value); localize(document.body); if(!activeWizard) dashboard();});
+localize(document.body);
+
+const themeButton = document.querySelector("#theme-button");
+const systemTheme = matchMedia("(prefers-color-scheme: light)");
+let themeMode = localStorage.getItem("kcw-theme-mode") || "system";
+if (!["system","light","dark"].includes(themeMode)) themeMode = "system";
+function applyThemeMode(mode, persist=true) {
+  themeMode = mode;
+  const theme = mode === "system" ? (systemTheme.matches ? "light" : "dark") : mode;
+  document.documentElement.dataset.theme = theme;
+  if (persist) localStorage.setItem("kcw-theme-mode",mode);
+  document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#0b1017" : "#f3f6f9";
+  document.querySelector("#theme-icon").textContent = mode === "system" ? "◐" : mode === "dark" ? "☾" : "☀";
+  themeButton.title = mode === "system" ? "Farbschema: System" : mode === "light" ? "Farbschema: Hell" : "Farbschema: Dunkel";
+  themeButton.setAttribute("aria-label",themeButton.title);
+  localize(themeButton);
+}
+applyThemeMode(themeMode,false);
+themeButton.addEventListener("click",()=>{const modes=["system","light","dark"]; applyThemeMode(modes[(modes.indexOf(themeMode)+1)%modes.length]);});
+systemTheme.addEventListener("change",()=>{if(themeMode === "system")applyThemeMode("system",false);});
+
+function setSteps(title, labels) {
+  document.querySelector("#rail-title").textContent = title;
+  progress.replaceChildren();
+  labels.forEach((label) => {
+    const item = document.createElement("li"); item.textContent = label; progress.append(item);
+  });
+}
+
+setSteps("Extruder calibration", t("steps"));
+
+function setProgress(step) {
+  setOverviewState(false);
+  emergencyButton.classList.remove("hidden");
+  rail.classList.remove("hidden");
+  workspace.classList.remove("menu-mode");
+  statusStrip.classList.remove("hidden");
+  uiStep = step;
+  [...progress.children].forEach((item, index) => {
+    item.className = index < step ? "done" : index === step ? "active" : "";
+  });
+}
+
+function dashboard() {
+  setOverviewState(true);
+  emergencyButton.classList.add("hidden");
+  emergencyButton.disabled = false;
+  emergencyButton.querySelector(".header-button-label").textContent = "NOT-AUS";
+  activeWizard = null;
+  rail.classList.add("hidden");
+  workspace.classList.add("menu-mode");
+  statusStrip.classList.add("hidden");
+  clearError();
+  const cards = wizards.map((wizard) => {
+    const configured = wizard.configuration?.point_count ? `<span class="configured">${wizard.configuration.point_count} Punkte erkannt</span>` : "";
+    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}">Einrichten</button>` : "";
+    if (wizard.available) {
+      return `<div class="calibration-card">
+        <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
+        ${configured}<div class="card-buttons"><button class="card-start" type="button" data-wizard="${wizard.id}">Jetzt starten →</button>${setup}</div></div>`;
+    }
+    return `<div class="calibration-card unavailable">
+      <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
+      <span class="unavailable-reason">${wizard.availability_reason || "Auf diesem Drucker nicht verfügbar"}</span>
+      <div class="card-buttons">${setup}<span class="planned">Nicht konfiguriert</span></div></div>`;
+  }).join("");
+  panel.innerHTML = `<span class="kicker">Kalibrierzentrale</span><h1>Kalibrierung auswählen</h1>
+    <p class="lead">Jeder Ablauf prüft den Druckerzustand serverseitig. Dauerhafte Änderungen werden erst nach einer separaten Bestätigung gespeichert.</p>
+    <div class="calibration-grid">${cards}</div>`;
+  document.querySelectorAll("[data-wizard]").forEach((card) => card.addEventListener("click", () => {
+    const id = card.dataset.wizard;
+    if (id === "extruder") welcome(); else openGeneric(id);
+  }));
+  document.querySelectorAll("[data-setup]").forEach((control) => control.addEventListener("click", async () => { try { await openSetup(control.dataset.setup); } catch(error) { showError(error.message); } }));
+}
+
+async function returnHome() {
+  clearError();
+  const terminal = ["COMPLETE","CANCELLED","ERROR"].includes(session?.state);
+  if (activeWizard && session && !terminal) {
+    if (activeWizard === "extruder") await api("wizards/extruder/cancel");
+    else await calibrationAction("cancel");
+  }
+  session = null;
+  dashboard();
+}
+
+homeButton.addEventListener("click",async(event)=>{
+  event.currentTarget.disabled=true;
+  try { await returnHome(); } catch(error) { showError(error.message); }
+  finally { event.currentTarget.disabled=isOverview; }
+});
+
+emergencyButton.addEventListener("click", async () => {
+  emergencyButton.disabled = true;
+  emergencyButton.querySelector(".header-button-label").textContent = "STOPP…";
+  try {
+    const response = await fetch(new URL("emergency-stop", base), {method:"POST"});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Not-Aus konnte nicht ausgelöst werden");
+    session = null;
+    emergencyButton.querySelector(".header-button-label").textContent = "GESTOPPT";
+    showError("NOT-AUS ausgelöst. Klipper befindet sich im Shutdown-Zustand. Prüfe den Drucker und führe erst danach einen Firmware-Neustart aus.");
+  } catch (error) {
+    emergencyButton.disabled = false;
+    emergencyButton.querySelector(".header-button-label").textContent = "NOT-AUS";
+    showError(error.message);
+  }
+  localize(emergencyButton);
+});
+
+function cardIcon(id) {
+  return ({extruder:"E", pid:"°", flow:"%", pressure_advance:"PA", probe_offset:"Z", screws_tilt:"↻", bed_screws:"⌁", z_tilt:"Z²", quad_gantry_level:"Q", bed_mesh:"▦", input_shaper:"≈"})[id] || "+";
+}
+
+function showError(message) {
+  notice.textContent = message;
+  notice.classList.remove("hidden");
+}
+
+function clearError() { notice.classList.add("hidden"); }
+
+async function api(path, body) {
+  clearError();
+  const response = await fetch(new URL(path, base), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || "Request failed");
+  session = data.session || data;
+  return data;
+}
+
+async function startCalibration(id, options = {}) {
+  activeWizard = id;
+  return api(`wizards/${id}/start`, { options });
+}
+
+async function calibrationAction(action, values = {}, confirmationToken = null) {
+  return api(`wizards/${activeWizard}/action`, { action, values, confirmation_token: confirmationToken });
+}
+
+function button(id, label, style = "") {
+  return `<button id="${id}" class="button ${style}" type="button">${label}</button>`;
+}
+
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[character]);
+}
+
+function bind(id, handler) {
+  document.querySelector(`#${id}`)?.addEventListener("click", async (event) => {
+    const target = event.currentTarget;
+    target.disabled = true;
+    try { await handler(); } catch (error) { showError(error.message); target.disabled = false; }
+  });
+}
+
+function welcome() {
+  activeWizard = "extruder";
+  setSteps("Extruder kalibrieren", t("steps"));
+  setProgress(0);
+  panel.innerHTML = `
+    <span class="kicker">Safe, guided setup</span>
+    <h1>${t("welcomeTitle")}</h1><p class="lead">${t("welcomeBody")}</p>
+    <div class="detail-grid">
+      <div class="detail"><span>Current extruder</span><strong>${printer?.extruder || "extruder"}</strong></div>
+      <div class="detail"><span>Current rotation distance</span><strong>${printer?.rotation_distance?.toFixed(5) || "—"} mm</strong></div>
+    </div>
+    <div class="actions">${button("start", "Start calibration")}</div>`;
+  bind("start", async () => { await api("wizards/extruder/start", { mark_distance: 120, commanded_extrusion: 100 }); heat(); });
+}
+
+const genericSteps = {
+  pid: ["Vorbereiten", "PID-Tuning", "Prüfen", "Speichern"],
+  bed_mesh: ["Vorbereiten", "Referenzieren", "Vermessen", "Speichern"],
+  screws_tilt: ["Referenzieren", "Messen", "Einstellen", "Wiederholen"],
+  bed_screws: ["Referenzieren", "Papier-Test", "Schrauben einstellen"],
+  probe_offset: ["Referenzieren", "Probe starten", "Papier-Test", "Speichern"],
+  pressure_advance: ["Vorbereiten", "Testturm", "Auswerten", "Speichern"],
+  flow: ["Test drucken", "Messen", "Berechnen"],
+  input_shaper: ["Sensor prüfen", "Referenzieren", "Messen", "Speichern"],
+  z_tilt: ["Vorbereiten", "Referenzieren", "Ausrichten"],
+  quad_gantry_level: ["Vorbereiten", "Referenzieren", "Ausrichten"],
+};
+
+function genericFrame(id, step) {
+  const definition = wizards.find((item) => item.id === id);
+  setSteps(definition?.name || "Kalibrierung", genericSteps[id] || ["Start", "Ergebnis"]);
+  setProgress(step);
+  activeWizard = id;
+  if (id === "pid") {
+    document.querySelector("#status-label-1").textContent = "Hotend";
+    document.querySelector("#status-label-2").textContent = "Heizbett";
+    document.querySelector("#temperature").textContent = `${printer?.temperature?.toFixed(1) ?? "—"} °C`;
+    document.querySelector("#target").textContent = `${printer?.bed_temperature?.toFixed(1) ?? "—"} °C`;
+  } else {
+    document.querySelector("#status-label-1").textContent = "Druckstatus";
+    document.querySelector("#status-label-2").textContent = "Achsen";
+    document.querySelector("#temperature").textContent = printer?.print_state || "—";
+    document.querySelector("#target").textContent = printer?.homed_axes?.toUpperCase() || "nicht referenziert";
+  }
+}
+
+function openGeneric(id) {
+  genericFrame(id, 0);
+  if (id === "pid") return pidSetup();
+  if (id === "pressure_advance") return pressureSetup();
+  if (id === "flow") return flowSetup();
+  if (id === "input_shaper") return shaperSetup();
+  const intro = {
+    bed_mesh: ["Bed Mesh", "Das Bett wird zuerst referenziert und danach mit deiner bestehenden Klipper-Konfiguration vermessen."],
+    screws_tilt: ["Bettschrauben ausrichten", "Klipper ermittelt für jede Schraube Drehrichtung und Betrag. Nach jeder Korrektur kannst du erneut messen."],
+    bed_screws: ["Manuelle Bettschrauben", "Klipper fährt jede konfigurierte Schraube an. Du stellst den Papierwiderstand nacheinander von Hand ein."],
+    probe_offset: ["Probe Z-Offset", "Mit PROBE_CALIBRATE und feinen TESTZ-Schritten stellst du den Papierabstand ein."],
+    z_tilt: ["Z-Tilt", "Klipper vermisst die konfigurierten Punkte und richtet zwei oder mehr unabhängige Z-Antriebe aus."],
+    quad_gantry_level: ["Quad Gantry Level", "Klipper vermisst vier Punkte und richtet die Gantry über vier unabhängige Z-Antriebe aus."],
+  }[id];
+  panel.innerHTML = `<span class="kicker">Geführter Ablauf</span><h1>${intro[0]}</h1><p class="lead">${intro[1]}</p>
+    <p class="safety-note">Der Drucker darf nicht drucken oder pausiert sein. Bewegungen starten erst nach deinem Klick.</p>
+    <div class="actions">${button("generic-start", "Kalibrierung starten")}</div>`;
+  bind("generic-start", async () => { await startCalibration(id); homingPage(id); });
+}
+
+function homingPage(id) {
+  genericFrame(id, 1);
+  panel.innerHTML = `<span class="kicker">Bewegung</span><h2>Alle Achsen referenzieren</h2><p>Prüfe, dass der Bauraum frei ist. Der Drucker führt anschließend <code>G28</code> aus.</p>
+    <div class="actions">${button("home", "Jetzt referenzieren")}</div>`;
+  bind("home", async () => { await calibrationAction("home"); if (id === "bed_mesh") bedMeshRun(); else if (id === "screws_tilt") screwsRun(); else if (id === "bed_screws") bedScrewsRun(); else if (id === "z_tilt" || id === "quad_gantry_level") gantryRun(id); else probeRun(); });
+}
+
+function bedScrewsRun() {
+  genericFrame("bed_screws",1); panel.innerHTML=`<span class="kicker">Manueller Papier-Test</span><h2>Erste Schraube anfahren</h2><p>Klipper fährt die Schrauben der Reihe nach an. Stelle an jeder Position denselben leichten Papierwiderstand ein und gehe dann zur nächsten Schraube.</p><div class="actions">${button("run","BED_SCREWS_ADJUST starten")}</div>`;
+  bind("run",async()=>{await calibrationAction("run"); bedScrewsAdjust();});
+}
+
+function bedScrewsAdjust() {
+  genericFrame("bed_screws",2); panel.innerHTML=`<span class="kicker">Schraube einstellen</span><h2>Papierwiderstand angleichen</h2><p>Drehe nur die aktuell angefahrene Schraube. Klicke danach auf „Nächste Schraube“. Klipper wiederholt den Rundgang, bis du das Ergebnis akzeptierst.</p><div class="actions">${button("next","Nächste Schraube")} ${button("accept","Ausrichtung akzeptieren","secondary")} ${button("abort","Abbrechen","danger ghost")}</div>`;
+  bind("next",async()=>{await calibrationAction("next"); document.querySelector("#next").disabled=false;}); bind("accept",async()=>{await calibrationAction("accept");completePage("Manuelle Bettschrauben");}); bind("abort",async()=>{await calibrationAction("abort");dashboard();});
+}
+
+function gantryRun(id) {
+  genericFrame(id,2); const command=id === "z_tilt" ? "Z_TILT_ADJUST" : "QUAD_GANTRY_LEVEL";
+  panel.innerHTML=`<span class="kicker">Automatische Ausrichtung</span><h2>${command}</h2><p>Klipper fährt alle konfigurierten Messpunkte ab und korrigiert die unabhängigen Z-Antriebe iterativ.</p><div class="actions">${button("run",`${command} starten`)}</div>`;
+  bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>Ausrichtung läuft…'; await calibrationAction("run"); completePage(id === "z_tilt" ? "Z-Tilt" : "Quad Gantry Level");});
+}
+
+async function openSetup(id) {
+  setOverviewState(false);
+  emergencyButton.classList.add("hidden");
+  activeWizard = null; rail.classList.add("hidden"); workspace.classList.add("menu-mode"); statusStrip.classList.add("hidden"); clearError();
+  const response = await fetch(new URL(`setup/${id}`,base)); const setup = await response.json();
+  if(!response.ok) throw new Error(setup.detail || "Einrichtung konnte nicht geladen werden");
+  renderSetup(id,setup);
+}
+
+function pair(value, fallback=["",""]) {
+  if (Array.isArray(value)) return [value[0] ?? "", value[1] ?? ""];
+  if (typeof value === "string") return value.split(",").map(item=>item.trim());
+  return fallback;
+}
+
+function pointRows(points, named=false) {
+  return points.map((point,index)=>`<div class="point-row">
+    ${named ? `<input class="point-name" value="${esc(point.name || `Schraube ${index+1}`)}" aria-label="Name">` : `<span class="point-number">${index+1}</span>`}
+    <input class="point-x" type="number" step="0.1" value="${esc(point.x)}" placeholder="X">
+    <input class="point-y" type="number" step="0.1" value="${esc(point.y)}" placeholder="Y">
+    <button class="remove-point" type="button" aria-label="Punkt entfernen">×</button></div>`).join("");
+}
+
+function existingPoints(current, kind) {
+  if (kind === "named_points") return Object.keys(current).filter(key=>/^screw\d+$/.test(key)).sort((a,b)=>Number(a.slice(5))-Number(b.slice(5))).map(key=>{const xy=pair(current[key]); return {x:xy[0],y:xy[1],name:current[`${key}_name`] || key};});
+  const raw=current.points || []; const values=Array.isArray(raw?.[0]) ? raw : (typeof raw === "string" ? raw.split("\n").map(pair) : []); return values.map(item=>({x:item[0],y:item[1]}));
+}
+
+function renderSetup(id, setup) {
+  const {schema,current,printer_bounds:bounds}=setup; const boundsText=`X ${bounds.x.min ?? "?"}–${bounds.x.max ?? "?"} · Y ${bounds.y.min ?? "?"}–${bounds.y.max ?? "?"} mm`;
+  let fields="";
+  if(schema.kind === "mesh") { const min=pair(current.mesh_min); const max=pair(current.mesh_max); const count=pair(current.probe_count,[5,5]); fields=`<div class="setup-grid"><label>Mesh-Minimum X<input id="min-x" type="number" step="0.1" value="${esc(min[0])}"></label><label>Mesh-Minimum Y<input id="min-y" type="number" step="0.1" value="${esc(min[1])}"></label><label>Mesh-Maximum X<input id="max-x" type="number" step="0.1" value="${esc(max[0])}"></label><label>Mesh-Maximum Y<input id="max-y" type="number" step="0.1" value="${esc(max[1])}"></label><label>Messpunkte X<input id="count-x" type="number" min="2" max="50" value="${esc(count[0])}"></label><label>Messpunkte Y<input id="count-y" type="number" min="2" max="50" value="${esc(count[1])}"></label></div>`; }
+  else { let groups=[]; if(schema.kind === "dual_points") groups=[{key:"z_positions",title:"Positionen der Z-Antriebe",points:(Array.isArray(current.z_positions)?current.z_positions:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:"Probe-Messpunkte",points:existingPoints(current,schema.kind)}]; else if(schema.kind === "quad_gantry") groups=[{key:"gantry_corners",title:"Gantry-Ecken (2 Punkte)",points:(Array.isArray(current.gantry_corners)?current.gantry_corners:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:"Probe-Messpunkte (4 Punkte)",points:existingPoints(current,schema.kind)}]; else groups=[{key:"points",title:"Schraubenpositionen",points:existingPoints(current,schema.kind),named:true}]; fields=groups.map(group=>`<section class="point-group" data-key="${group.key}" data-named="${group.named ? "true":"false"}"><div class="group-heading"><h3>${group.title}</h3><button class="add-point button secondary" type="button">Punkt hinzufügen</button></div><div class="point-list">${pointRows(group.points.length?group.points:[{},{},{},{}],group.named)}</div></section>`).join(""); }
+  const thread=schema.fields.includes("screw_thread") ? `<label>Schraubengewinde<select id="screw-thread">${["CW-M3","CW-M4","CW-M5","CCW-M3","CCW-M4","CCW-M5"].map(value=>`<option ${current.screw_thread===value?"selected":""}>${value}</option>`).join("")}</select></label>`:"";
+  const advanced=["speed","horizontal_move_z","probe_height","retries","retry_tolerance","max_adjust"].filter(key=>schema.fields.includes(key)).map(key=>`<label>${key}<input id="setup-${key}" type="number" step="0.01" value="${esc(current[key])}"></label>`).join("");
+  panel.innerHTML=`<span class="kicker">Kalibrierung einrichten</span><h1>${wizards.find(w=>w.id===id)?.name || id}</h1><p class="lead">Lege die Geometrie für diesen Drucker fest. Zulässiger Verfahrbereich laut Klipper: <strong>${boundsText}</strong>.</p><p class="safety-note">Koordinaten müssen zur Mechanik, zum Probe-Offset und zu einem freien Verfahrweg passen. Falsche Werte können eine Kollision verursachen.</p>${fields}<div class="setup-grid advanced-fields">${thread}${advanced}</div><div class="actions">${button("preview-setup","Änderungen prüfen")} ${button("back","Zurück","secondary")}</div>`;
+  document.querySelectorAll(".add-point").forEach(control=>control.addEventListener("click",()=>{const group=control.closest(".point-group"); group.querySelector(".point-list").insertAdjacentHTML("beforeend",pointRows([{}],group.dataset.named==="true")); bindPointRemovers();})); bindPointRemovers(); bind("back",dashboard); bind("preview-setup",async()=>{const values=collectSetup(schema); const response=await api(`setup/${id}/preview`,{values}); renderSetupPreview(id,values,response);});
+}
+
+function bindPointRemovers(){document.querySelectorAll(".remove-point").forEach(control=>control.onclick=()=>control.closest(".point-row").remove());}
+
+function collectSetup(schema){const value=id=>document.querySelector(`#${id}`)?.value; const values={}; if(schema.kind==="mesh"){values.mesh_min=[value("min-x"),value("min-y")]; values.mesh_max=[value("max-x"),value("max-y")]; values.probe_count=[value("count-x"),value("count-y")];} document.querySelectorAll(".point-group").forEach(group=>{values[group.dataset.key]=[...group.querySelectorAll(".point-row")].map(row=>({x:row.querySelector(".point-x").value,y:row.querySelector(".point-y").value,name:row.querySelector(".point-name")?.value}));}); if(schema.fields.includes("screw_thread"))values.screw_thread=value("screw-thread"); ["speed","horizontal_move_z","probe_height","retries","retry_tolerance","max_adjust"].forEach(key=>{const entry=value(`setup-${key}`);if(entry!==undefined&&entry!=="")values[key]=entry;}); return values;}
+
+function renderSetupPreview(id,values,preview){panel.innerHTML=`<span class="kicker">Vorschau · ${esc(preview.digest)}</span><h2>[${esc(preview.section)}] prüfen</h2><p>Diese normalisierten Werte werden in den vorhandenen Abschnitt geschrieben; andere Schlüssel bleiben erhalten.</p><pre class="config-preview">${esc(Object.entries(preview.settings).map(([key,value])=>`${key}: ${String(value).replaceAll("\n","\n  ")}`).join("\n"))}</pre><label><input id="setup-confirm" type="checkbox" style="width:auto"> Backup erstellen, Konfiguration schreiben und Klipper neu starten.</label><div class="actions">${button("save-setup","Einrichtung speichern")} ${button("back","Abbrechen","secondary")}</div>`; bind("back",dashboard); bind("save-setup",async()=>{if(!document.querySelector("#setup-confirm").checked)throw new Error("Bestätige die Änderung und den Klipper-Neustart."); const result=await api(`setup/${id}/save`,{values,confirmation_token:preview.confirmation_token,restart:true}); panel.innerHTML=`<span class="kicker">Gespeichert</span><h2>Einrichtung übernommen</h2><p>Quelle: <code>${esc(result.source)}</code><br>Backup: <code>${esc(result.backup)}</code></p><p>Klipper wird neu gestartet. Nach dem erneuten Verbinden wird die Kalibrierung automatisch neu bewertet.</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`; bind("dashboard",async()=>{wizards=await fetch(new URL("wizards",base)).then(r=>r.json());dashboard();});});}
+
+function bedMeshRun() {
+  genericFrame("bed_mesh", 2);
+  panel.innerHTML = `<span class="kicker">Messbewegung</span><h2>Druckbett vermessen</h2><p>Klipper fährt alle in <code>[bed_mesh]</code> definierten Punkte ab. Dieser Vorgang kann mehrere Minuten dauern.</p>
+    <div class="actions">${button("run", "Bed Mesh starten")}</div>`;
+  bind("run", async () => { document.querySelector("#run").innerHTML='<span class="spinner"></span>Vermessung läuft…'; await calibrationAction("run"); saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert."); });
+}
+
+function screwsRun() {
+  genericFrame("screws_tilt", 1);
+  panel.innerHTML = `<span class="kicker">Messung</span><h2>Schraubenpositionen messen</h2><p>Klipper fährt die konfigurierten Schraubenpositionen an und berechnet die Korrekturen.</p><div class="actions">${button("run", "SCREWS_TILT_CALCULATE starten")}</div>`;
+  bind("run", async () => { await calibrationAction("calculate"); screwsResult(); });
+}
+
+function screwsResult() {
+  genericFrame("screws_tilt", 2);
+  const result = session.data.result || {}; const entries = Object.entries(result.results || {});
+  const rows = entries.length ? entries.map(([name, item]) => `<div class="metric"><span>${name}</span><strong>${item.is_base ? "Referenz" : `${item.sign || ""} ${item.adjust || "—"}`}</strong></div>`).join("") : '<p>Klipper meldet keine Korrekturen – das Bett ist bereits ausgerichtet.</p>';
+  panel.innerHTML = `<span class="kicker">Ergebnis</span><h2>Schrauben einstellen</h2><div class="result-grid">${rows}</div><p>Stelle die Schrauben bei stillstehendem Drucker ein und wiederhole danach die Messung. Eine mechanische Änderung kann eine erneute Z‑Offset-Kalibrierung erfordern.</p><div class="actions">${button("again", "Erneut messen")} ${button("done", "Fertig", "secondary")}</div>`;
+  bind("again", screwsRun); bind("done", dashboard);
+}
+
+function probeRun() {
+  genericFrame("probe_offset", 1);
+  panel.innerHTML = `<span class="kicker">Probe</span><h2>Manuelle Z-Kalibrierung starten</h2><p>Klipper positioniert die Düse und startet <code>PROBE_CALIBRATE</code>. Lege danach ein normales Blatt Papier unter die saubere Düse.</p><div class="actions">${button("begin", "PROBE_CALIBRATE starten")}</div>`;
+  bind("begin", async () => { await calibrationAction("begin"); probeAdjust(); });
+}
+
+function probeAdjust() {
+  genericFrame("probe_offset", 2);
+  const controls = [-1,-.5,-.1,-.05,-.01,.01,.05,.1,.5,1].map((value) => `<button class="button secondary testz" data-z="${value}">${value > 0 ? "+" : ""}${value} mm</button>`).join("");
+  panel.innerHTML = `<span class="kicker">Papier-Test</span><h2>Düse schrittweise absenken</h2><p>Bewege Z, bis sich das Papier mit leichtem Widerstand bewegen lässt. Negative Werte senken die Düse. Beginne grob und werde dann feiner.</p><div class="jog-grid">${controls}</div><div class="actions">${button("accept", "Position übernehmen")} ${button("abort", "Abbrechen", "danger ghost")}</div>`;
+  document.querySelectorAll(".testz").forEach((control) => control.addEventListener("click", async () => { control.disabled=true; try { await calibrationAction("testz", {amount:Number(control.dataset.z)}); } catch(error) { showError(error.message); } finally { control.disabled=false; } }));
+  bind("accept", async () => { await calibrationAction("accept"); saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert."); });
+  bind("abort", async () => { await calibrationAction("abort"); dashboard(); });
+}
+
+function pidSetup() {
+  genericFrame("pid", 0);
+  panel.innerHTML = `<span class="kicker">Heizer wählen</span><h1>PID kalibrieren</h1><p class="lead">Wähle den Heizer und eine typische Drucktemperatur. Nach dem ersten Aufheizen schaltet Klipper den Heizer mehrfach knapp ober- und unterhalb der Zieltemperatur um.</p>
+    <label for="heater">Heizer</label><select id="heater"><option value="extruder">Hotend</option><option value="heater_bed">Heizbett</option></select>
+    <label for="pid-target">Zieltemperatur · 5 °C Schritte</label><div class="input-row"><input id="pid-target" type="number" value="220" min="150" max="300" step="5"><span class="unit">°C</span></div><div class="actions">${button("pid-start", "PID-Tuning starten")}</div>`;
+  document.querySelector("#heater").addEventListener("change", (event) => { const bed=event.target.value==="heater_bed"; const input=document.querySelector("#pid-target"); input.value=bed?60:220; input.min=bed?30:150; input.max=bed?130:300; });
+  bind("pid-start", async () => { const heater=document.querySelector("#heater").value; const target=Number(document.querySelector("#pid-target").value); await startCalibration("pid", {heater,target}); genericFrame("pid",1); panel.innerHTML=`<span class="kicker">Heizzyklen</span><h2>PID-Tuning bereit</h2>${pidSelectionSummary()}<p>Während der Messung werden hohe Temperaturen erreicht. Nach dem ersten Aufheizen folgen mehrere kurze Heiz- und Abkühlphasen um die Zieltemperatur. Lasse den Drucker nicht unbeaufsichtigt.</p><div class="actions">${button("run","Messung ausführen")}</div>`; bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>PID-Tuning läuft…'; await calibrationAction("run"); saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary());}); });
+}
+
+function pidSelectionSummary() {
+  const heater = session?.data?.heater === "heater_bed" ? "Heizbett" : "Hotend";
+  const target = Number(session?.data?.target);
+  return `<div class="result-grid"><div class="metric"><span>Ausgewählter Heizer</span><strong>${heater}</strong></div><div class="metric"><span>Gewählte Zieltemperatur</span><strong>${Number.isFinite(target) ? target.toFixed(0) : "—"} °C</strong></div></div>`;
+}
+
+function pressureSetup() {
+  genericFrame("pressure_advance",0);
+  panel.innerHTML=`<span class="kicker">Testturm</span><h1>Pressure Advance</h1><p class="lead">Der Klipper-Testturm verändert Pressure Advance über die Höhe. Wähle deinen Extruder-Typ.</p><label for="drive">Extruder-Typ</label><select id="drive"><option value="direct">Direct Drive · Faktor 0,005</option><option value="bowden">Bowden · Faktor 0,020</option></select><div class="actions">${button("pa-start","Vorbereiten")}</div>`;
+  bind("pa-start",async()=>{await startCalibration("pressure_advance",{drive:document.querySelector("#drive").value}); pressurePrint();});
+}
+
+function pressurePrint() {
+  genericFrame("pressure_advance",1);
+  panel.innerHTML=`<span class="kicker">Slicer & Druck</span><h2>Testturm drucken</h2><p>Lade das <a href="${session.data.model_url}" target="_blank" rel="noopener">offizielle Klipper-Testmodell</a>, slice es mit 0,4-mm Düse, 0,2-mm Schichthöhe, 100 mm/s und deaktivierter dynamischer Beschleunigungssteuerung. Starte danach hier den Tuning-Tower-Befehl und anschließend den Druck in Mainsail.</p><div class="actions">${button("prepare","Tuning Tower aktivieren")}</div>`;
+  bind("prepare",async()=>{await calibrationAction("prepare"); pressureMeasure();});
+}
+
+function pressureMeasure() {
+  genericFrame("pressure_advance",2);
+  panel.innerHTML=`<span class="kicker">Auswertung</span><h2>Beste Höhe messen</h2><p>Miss vom Boden bis zu der Höhe, an der die Ecken am gleichmäßigsten sind.</p><label for="pa-height">Höhe</label><div class="input-row"><input id="pa-height" type="number" min="0" max="100" step="0.1"><span class="unit">mm</span></div><div class="actions">${button("calculate","Berechnen")}</div>`;
+  bind("calculate",async()=>{await calibrationAction("calculate",{height:Number(document.querySelector("#pa-height").value)}); pressureResult();});
+}
+
+function pressureResult() {
+  genericFrame("pressure_advance",2); const value=session.data.value;
+  panel.innerHTML=`<span class="kicker">Ergebnis</span><h2>Pressure Advance ${value.toFixed(4)}</h2><p>Der Wert wird zuerst nur zur Laufzeit gesetzt. Erst deine nächste Bestätigung schreibt ihn in die Extruder-Konfiguration.</p><div class="actions">${button("apply","Temporär anwenden")}</div>`;
+  bind("apply",async()=>{await calibrationAction("apply"); saveLocalPage("Pressure Advance",`Neuer Wert: ${value.toFixed(6)}`);});
+}
+
+function flowSetup() {
+  genericFrame("flow",0);
+  panel.innerHTML=`<span class="kicker">Slicer-Kalibrierung</span><h1>Flow / Extrusionsfaktor</h1><p class="lead">Drucke den bereitgestellten Testkörper mit einer Wand und ohne Deckschichten. Trage danach Sollstärke und vier Messungen ein.</p>
+    <section class="model-download" aria-labelledby="flow-model-title">
+      <div><span class="model-icon" aria-hidden="true">STL</span></div>
+      <div><h3 id="flow-model-title">Flow-Testkörper · 30 × 30 × 20 mm</h3><p>Für jeden Slicer geeignet. Das Modell wird erst durch die folgenden Slicer-Einstellungen zum einwandigen Messkörper.</p></div>
+      <a class="button secondary download-button" href="assets/models/flow-calibration-cube-30x30x20.stl" download="flow-calibration-cube-30x30x20.stl">STL herunterladen</a>
+    </section>
+    <div class="slicer-settings"><h3>Slicer-Einstellungen</h3><ul><li>Wände / Perimeter: <strong>1</strong></li><li>Deckschichten: <strong>0</strong></li><li>Infill: <strong>0 %</strong></li><li>Bodenschichten: <strong>3</strong></li><li>Linienbreite: <strong>0,40 mm</strong> (bei 0,4-mm-Düse)</li><li>Spiral-/Vasenmodus: <strong>deaktiviert</strong></li></ul></div>
+    <p class="measurement-hint">Miss jede Seitenwand mittig, deutlich entfernt von Ecken und untersten Schichten. Verwende bei einer anderen Linienbreite diesen Wert als Sollstärke.</p>
+    <div class="detail-grid"><div><label>Sollstärke</label><input id="flow-expected" type="number" value="0.4" min="0.1" step="0.01"></div><div><label>Aktueller Flow</label><input id="flow-current" type="number" value="100" min="70" max="130" step="0.1"></div>${[1,2,3,4].map(n=>`<div><label>Messung ${n}</label><input class="flow-measure" type="number" min="0.1" step="0.01"></div>`).join("")}</div><div class="actions">${button("flow-calc","Extrusionsfaktor berechnen")}</div>`;
+  bind("flow-calc",async()=>{await startCalibration("flow"); await calibrationAction("calculate",{expected:Number(document.querySelector("#flow-expected").value),current:Number(document.querySelector("#flow-current").value),measurements:[...document.querySelectorAll(".flow-measure")].map(i=>Number(i.value))}); genericFrame("flow",2); panel.innerHTML=`<span class="kicker">Ergebnis</span><h2>${session.data.result.toFixed(1)} % Flow</h2><p>Mittlere gemessene Wandstärke: ${session.data.average.toFixed(3)} mm. Übernimm den neuen Wert in dein Filamentprofil im Slicer und drucke zur Kontrolle erneut.</p><div class="actions">${button("done","Fertig")}</div>`; bind("done",dashboard);});
+}
+
+function shaperSetup() {
+  genericFrame("input_shaper",0);
+  panel.innerHTML=`<span class="kicker">Beschleunigungssensor</span><h1>Input Shaper</h1><p class="lead">Der Sensor wird zuerst abgefragt. Danach erzeugt Klipper starke, schnelle Schwingungen und bestimmt passende Shaper für X und Y.</p><p class="safety-note">Prüfe Sensorbefestigung, Kabelweg und freien Bauraum. Bleibe während der Messung am Drucker.</p><label for="shaper-axis">Achsen</label><select id="shaper-axis"><option value="both">X und Y</option><option value="x">Nur X</option><option value="y">Nur Y</option></select><div class="actions">${button("sensor-check","Sensor prüfen")}</div>`;
+  bind("sensor-check",async()=>{await startCalibration("input_shaper",{axis:document.querySelector("#shaper-axis").value}); await calibrationAction("check"); shaperHome();});
+}
+
+function shaperHome() {
+  genericFrame("input_shaper",1); panel.innerHTML=`<span class="kicker">Bewegung</span><h2>Achsen referenzieren</h2><p>Räume den Bauraum frei. Anschließend wird G28 ausgeführt.</p><div class="actions">${button("home","Referenzieren")}</div>`;
+  bind("home",async()=>{await calibrationAction("home"); shaperRun();});
+}
+
+function shaperRun() {
+  genericFrame("input_shaper",2); panel.innerHTML=`<span class="kicker">Starke Schwingungen</span><h2>Resonanzmessung starten</h2><p>Der Drucker bewegt sich schnell und laut. Stoppe ihn sofort bei lockeren Teilen, Zug am Sensorkabel oder ungewöhnlichen Geräuschen.</p><label><input id="vibration-confirm" type="checkbox" style="width:auto"> Sensor und Kabel sind sicher befestigt, der Bauraum ist frei.</label><div class="actions">${button("run","SHAPER_CALIBRATE starten")}</div>`;
+  bind("run",async()=>{if(!document.querySelector("#vibration-confirm").checked)throw new Error("Bestätige zuerst die sichere Vorbereitung."); document.querySelector("#run").innerHTML='<span class="spinner"></span>Messung läuft…'; await calibrationAction("run"); saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.");});
+}
+
+function saveKlipperPage(title, copy, selection = "") {
+  genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">Dauerhafte Änderung</span><h2>${title} speichern</h2><p>${copy}</p>${selection}<label><input id="confirm-save" type="checkbox" style="width:auto"> Ich möchte genau die Ergebnisse dieser Kalibrierung mit SAVE_CONFIG speichern und Klipper neu starten.</label><div class="actions">${button("save-config","SAVE_CONFIG ausführen")}</div>`;
+  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die dauerhafte Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title);});
+}
+
+function saveLocalPage(title, copy) {
+  genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">Dauerhafte Änderung</span><h2>${title} speichern</h2><p>${copy}</p><label><input id="confirm-save" type="checkbox" style="width:auto"> Konfigurationsdatei mit Backup ändern.</label><div class="actions">${button("save-config","In Konfiguration speichern")}</div>`;
+  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title);});
+}
+
+function completePage(title) { panel.innerHTML=`<span class="kicker">Abgeschlossen</span><h2>${title} gespeichert</h2><p>Die Kalibrierung ist abgeschlossen.</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`; bind("dashboard",dashboard); }
+
+function heat() {
+  setProgress(1);
+  const minimum = Math.ceil(Math.max(printer?.min_extrude_temp || 170, 150) / 5) * 5;
+  const suggested = Math.max(200, minimum);
+  panel.innerHTML = `<span class="kicker">Step 2</span><h2>Heat the extruder</h2>
+    <p>Choose a temperature suitable for the loaded filament. Continue only when Klipper reports that extrusion is safe.</p>
+    <label for="heat-input">Target temperature · 5 °C increments</label><div class="input-row"><input id="heat-input" type="number" min="${minimum}" max="300" value="${suggested}" step="5"><span class="unit">°C</span></div>
+    <div class="actions">${button("heat", "Heat extruder")} ${button("heat-next", "Continue", "secondary")}</div>`;
+  bind("heat", async () => {
+    const temperature = Number(document.querySelector("#heat-input").value);
+    if (!Number.isFinite(temperature) || temperature % 5 !== 0) throw new Error("Choose a temperature in 5 °C increments.");
+    await api("wizards/extruder/heat", { temperature }); document.querySelector("#heat").textContent = "Heating…";
+  });
+  bind("heat-next", async () => { await api("wizards/extruder/ready"); mark(); });
+}
+
+function mark() {
+  setProgress(2);
+  panel.innerHTML = `<span class="kicker">Step 3</span><h2>Mark the filament</h2>
+    <p>Load filament, choose an unambiguous fixed reference point at the extruder entrance, then measure and mark exactly <strong>${session.mark_distance} mm</strong> above it.</p>
+    <div class="detail-grid"><div class="detail"><span>Mark distance</span><strong>${session.mark_distance} mm</strong></div><div class="detail"><span>Next extrusion</span><strong>${session.commanded_extrusion} mm</strong></div></div>
+    <div class="actions">${button("marked", "Mark is ready")}</div>`;
+  bind("marked", extrusion);
+}
+
+function extrusion() {
+  setProgress(3);
+  panel.innerHTML = `<span class="kicker">Step 4 · Motion</span><h2>Extrude ${session.commanded_extrusion} mm</h2>
+    <p>The extruder will move slowly at 1 mm/s. Klipper's cold-extrusion protection and printer state are checked again immediately before motion.</p>
+    <div class="actions">${button("extrude", `Extrude ${session.commanded_extrusion} mm`)}</div>`;
+  bind("extrude", async () => { document.querySelector("#extrude").innerHTML = '<span class="spinner"></span>Extruding…'; await api("wizards/extruder/extrude"); measure(false); });
+}
+
+function measure(verification) {
+  setProgress(verification ? 6 : 4);
+  panel.innerHTML = `<span class="kicker">${verification ? "Verification" : "Step 5"}</span><h2>Measure the remainder</h2>
+    <p>Measure from the same fixed reference point to the filament mark. Enter the remaining distance as precisely as possible.</p>
+    <label for="remaining">Remaining distance</label><div class="input-row"><input id="remaining" inputmode="decimal" type="number" min="0" max="${session.mark_distance}" step="0.01" placeholder="20.00"><span class="unit">mm</span></div>
+    <div class="actions">${button("calculate", verification ? "Check result" : "Calculate")}</div>`;
+  bind("calculate", async () => {
+    const value = Number(document.querySelector("#remaining").value);
+    if (!Number.isFinite(value)) throw new Error("Enter a valid remaining distance.");
+    await api(verification ? "wizards/extruder/verify/measurement" : "wizards/extruder/measurement", { remaining_distance: value });
+    result(verification);
+  });
+}
+
+function result(verification = false) {
+  setProgress(verification ? 7 : 5);
+  const r = verification ? session.verification_result : session.result;
+  const warnings = r.warnings.length ? `<ul class="warning-list">${r.warnings.map((w) => `<li>${w}</li>`).join("")}</ul>` : "";
+  panel.innerHTML = `<span class="kicker">${verification ? "Verification result" : "Calculated result"}</span><h2>${r.safe_to_apply ? "Measurement looks plausible" : "Please check the measurement"}</h2>
+    <div class="result-grid">
+      <div class="metric"><span>Requested</span><strong>${r.requested_extrusion.toFixed(2)} mm</strong></div><div class="metric"><span>Actual</span><strong>${r.actual_extrusion.toFixed(2)} mm</strong></div>
+      <div class="metric"><span>Deviation</span><strong>${r.deviation_mm.toFixed(2)} mm · ${r.deviation_percent.toFixed(2)}%</strong></div><div class="metric"><span>${verification ? "Tested" : "New"} rotation distance</span><strong>${r.new_rotation_distance.toFixed(5)} mm</strong></div>
+    </div>${warnings}
+    <div class="actions">${!verification && r.safe_to_apply ? button("apply", "Apply temporarily") : ""} ${!verification ? button("again", "Measure again", "secondary") : button("save-view", "Continue to save", "secondary")}</div>`;
+  bind("apply", async () => { await api("wizards/extruder/apply"); verify(); });
+  bind("again", async () => { await api("wizards/extruder/measure-again"); mark(); });
+  bind("save-view", saveView);
+}
+
+function verify() {
+  setProgress(6);
+  panel.innerHTML = `<span class="kicker">Step 7 · Optional</span><h2>Verify the new value</h2><p>The new rotation distance is active until Klipper restarts. You can repeat the measurement before saving, or proceed directly to the explicit save confirmation.</p>
+    <div class="actions">${button("verify", `Extrude ${session.commanded_extrusion} mm again`)} ${button("skip", "Skip verification", "secondary")}</div>`;
+  bind("verify", async () => { await api("wizards/extruder/verify/extrude"); measure(true); });
+  bind("skip", saveView);
+}
+
+function saveView() {
+  setProgress(7);
+  const canSave = Boolean(session.save_token && session.config_source);
+  panel.innerHTML = `<span class="kicker">Step 8 · Permanent change</span><h2>Save configuration</h2>
+    <p>A timestamped backup is created first. Only the exact <code>rotation_distance</code> setting in its source include file is changed.</p>
+    <div class="result-grid"><div class="metric"><span>Old value</span><strong>${session.old_rotation_distance.toFixed(8)}</strong></div><div class="metric"><span>New value</span><strong>${session.result.new_rotation_distance.toFixed(8)}</strong></div></div>
+    <p>${canSave ? `Source: <code>${session.config_source}</code>` : "Permanent writes are unavailable because the source setting could not be resolved. The temporary value remains active until restart."}</p>
+    <label><input id="confirm" type="checkbox" style="width:auto"> I confirm these old and new values and want to change the Klipper configuration.</label>
+    <div class="actions">${button("save", "Save configuration", canSave ? "" : "secondary")}</div>`;
+  document.querySelector("#save").disabled = !canSave;
+  bind("save", async () => {
+    if (!document.querySelector("#confirm").checked) throw new Error("Confirm the permanent configuration change first.");
+    const response = await api("wizards/extruder/save", { confirmation_token: session.save_token, old_rotation_distance: session.old_rotation_distance, new_rotation_distance: session.result.new_rotation_distance });
+    panel.innerHTML = `<span class="kicker">Complete</span><h2>Calibration saved</h2><p>${response.message}</p><p>The runtime value is already active. The backup can be restored as described in the installation guide.</p>`;
+  });
+}
+
+document.querySelector("#cancel").addEventListener("click", async () => {
+  try {
+    if (session && activeWizard === "extruder") await api("wizards/extruder/cancel");
+    else if (session && activeWizard) await calibrationAction("cancel");
+    session = null; dashboard();
+  } catch (error) { showError(error.message); }
+});
+
+function updateStatus(data) {
+  printer = data.printer;
+  if (activeWizard === "extruder" && data.session) session = data.session;
+  if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
+  if (activeWizard === "pid") {
+    document.querySelector("#status-label-1").textContent = "Hotend";
+    document.querySelector("#status-label-2").textContent = "Heizbett";
+    document.querySelector("#temperature").textContent = `${printer.temperature.toFixed(1)} °C`;
+    document.querySelector("#target").textContent = `${printer.bed_temperature.toFixed(1)} °C`;
+  } else if (!activeWizard || activeWizard === "extruder") {
+    document.querySelector("#status-label-1").textContent = "Hotend";
+    document.querySelector("#status-label-2").textContent = "Ziel";
+    document.querySelector("#temperature").textContent = `${printer.temperature.toFixed(1)} °C`;
+    document.querySelector("#target").textContent = `${printer.target.toFixed(1)} °C`;
+  } else {
+    document.querySelector("#temperature").textContent = printer.print_state || "—";
+    document.querySelector("#target").textContent = printer.homed_axes?.toUpperCase() || "nicht referenziert";
+  }
+  document.querySelector("#klipper-state").textContent = printer.state;
+  connection.className = `connection ${printer.connected ? "online" : "offline"}`;
+  document.querySelector("#connection").textContent = printer.connected ? "Printer connected" : "Printer offline";
+}
+
+function connect() {
+  const wsUrl = new URL("./api/events", window.location.href);
+  wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(wsUrl);
+  socket.onmessage = (event) => updateStatus(JSON.parse(event.data));
+  socket.onclose = () => { connection.className = "connection offline"; document.querySelector("#connection").textContent = "Reconnecting"; setTimeout(connect, 2000); };
+}
+
+Promise.all([
+  fetch(new URL("status", base)).then((r) => r.json()),
+  fetch(new URL("wizards", base)).then((r) => r.json()),
+]).then(([status, availableWizards]) => {
+  updateStatus(status); wizards = availableWizards; dashboard();
+}).catch((error) => { showError(error.message); dashboard(); });
+connect();

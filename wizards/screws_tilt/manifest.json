@@ -1,0 +1,8 @@
+{
+  "id": "screws_tilt",
+  "name": "Bettschrauben",
+  "description": "Drehrichtung und Korrektur jeder Bettschraube automatisch ermitteln.",
+  "version": 1,
+  "available": true,
+  "requirements": ["screws_tilt_adjust", "SCREWS_TILT_CALCULATE"]
+}

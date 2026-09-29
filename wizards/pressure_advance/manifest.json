@@ -1,0 +1,8 @@
+{
+  "id": "pressure_advance",
+  "name": "Pressure advance",
+  "description": "Testturm vorbereiten, optimale Höhe auswerten und Wert sichern.",
+  "version": 1,
+  "available": true,
+  "requirements": ["TUNING_TOWER", "SET_PRESSURE_ADVANCE"]
+}

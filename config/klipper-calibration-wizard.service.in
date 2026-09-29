@@ -1,0 +1,23 @@
+[Unit]
+Description=Klipper Calibration Wizard
+After=network-online.target moonraker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@PROJECT_DIR@
+EnvironmentFile=@ENV_FILE@
+ExecStart=@PROJECT_DIR@/.venv/bin/klipper-calibration-wizard
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@CONFIG_DIR@ @BACKUP_DIR@
+
+[Install]
+WantedBy=multi-user.target
+
