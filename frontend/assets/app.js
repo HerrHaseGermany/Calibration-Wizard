@@ -363,20 +363,47 @@ const genericSteps = {
 
 function genericFrame(id, step) {
   const definition = wizards.find((item) => item.id === id);
+  activeWizard = id;
   setSteps(definition?.name || "Kalibrierung", genericSteps[id] || ["Start", "Ergebnis"]);
   setProgress(step);
-  activeWizard = id;
-  if (id === "pid") {
-    document.querySelector("#status-label-1").textContent = "Hotend";
-    document.querySelector("#status-label-2").textContent = "Heizbett";
+  updateCalibrationStatusStrip();
+}
+
+function updateCalibrationStatusStrip() {
+  if (activeWizard === "pid") {
+    statusStrip.classList.remove("hidden");
+    document.querySelector("#status-label-1").textContent = "Hotend Ist";
+    document.querySelector("#status-label-2").textContent = "Heizbett Ist";
     document.querySelector("#temperature").textContent = `${printer?.temperature?.toFixed(1) ?? "—"} °C`;
     document.querySelector("#target").textContent = `${printer?.bed_temperature?.toFixed(1) ?? "—"} °C`;
-  } else {
+  } else if (activeWizard === "extruder") {
+    statusStrip.classList.remove("hidden");
+    document.querySelector("#status-label-1").textContent = "Hotend Ist";
+    document.querySelector("#status-label-2").textContent = "Hotend Ziel";
+    document.querySelector("#temperature").textContent = `${printer?.temperature?.toFixed(1) ?? "—"} °C`;
+    document.querySelector("#target").textContent = `${printer?.target?.toFixed(1) ?? "—"} °C`;
+  } else if (activeWizard === "pressure_advance") {
+    statusStrip.classList.remove("hidden");
     document.querySelector("#status-label-1").textContent = "Druckstatus";
-    document.querySelector("#status-label-2").textContent = "Achsen";
+    document.querySelector("#status-label-2").textContent = "Testfaktor";
     document.querySelector("#temperature").textContent = printer?.print_state || "—";
-    document.querySelector("#target").textContent = printer?.homed_axes?.toUpperCase() || "nicht referenziert";
+    document.querySelector("#target").textContent = Number.isFinite(session?.data?.factor) ? session.data.factor.toFixed(3) : "—";
+  } else if (activeWizard === "flow") {
+    statusStrip.classList.add("hidden");
+  if (id === "pid") {
+    return;
   }
+  } else if (activeWizard) {
+    const definition = wizards.find((item) => item.id === activeWizard);
+    statusStrip.classList.remove("hidden");
+    document.querySelector("#status-label-1").textContent = "Kalibrierung";
+    document.querySelector("#status-label-2").textContent = "Referenzierte Achsen";
+    document.querySelector("#temperature").textContent = definition?.name || activeWizard;
+    document.querySelector("#target").textContent = printer?.homed_axes?.toUpperCase() || "keine";
+  } else {
+    return;
+  }
+  document.querySelector("#klipper-state").textContent = printer?.state || "—";
 }
 
 function openGeneric(id) {

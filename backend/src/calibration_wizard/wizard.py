@@ -237,6 +237,9 @@ class ExtruderWizard:
         session = self._require(*tuple(WizardState))
         if session.state == WizardState.RUNNING:
             raise WizardError("Cannot cancel while the synchronous extrusion command is running")
+        if session.save_token and session.state in {WizardState.APPLIED, WizardState.COMPLETE}:
+            await self._safe_snapshot()
+            await self.printer.set_rotation_distance(session.extruder, session.old_rotation_distance)
         session.state = WizardState.CANCELLED
         session.save_token = None
         return session

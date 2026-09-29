@@ -136,20 +136,26 @@ class MoonrakerPrinter(PrinterAdapter):
         )
 
     async def _gcode(self, script: str, *, long_running: bool = False) -> None:
-        response = await self.client.post(
-            "/printer/gcode/script",
-            json={"script": script},
-            timeout=None if long_running else self.client.timeout,
-        )
-        await self._result(response)
+        try:
+            response = await self.client.post(
+                "/printer/gcode/script",
+                json={"script": script},
+                timeout=None if long_running else self.client.timeout,
+            )
+            await self._result(response)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PrinterError(str(exc)) from exc
 
     async def run_gcode(self, script: str, *, long_running: bool = False) -> None:
         await self._gcode(script, long_running=long_running)
 
     async def query_objects(self, objects: dict[str, list[str] | None]) -> dict[str, Any]:
-        response = await self.client.post("/printer/objects/query", json={"objects": objects})
-        result = await self._result(response)
-        return result.get("status", {})
+        try:
+            response = await self.client.post("/printer/objects/query", json={"objects": objects})
+            result = await self._result(response)
+            return result.get("status", {})
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PrinterError(str(exc)) from exc
 
     async def capabilities(self) -> PrinterCapabilities:
         try:
@@ -241,6 +247,7 @@ class MockPrinter(PrinterAdapter):
                 "TUNING_TOWER",
                 "SHAPER_CALIBRATE",
                 "ACCELEROMETER_QUERY",
+                "MEASURE_AXES_NOISE",
             ],
             objects=[
                 "bed_mesh",
@@ -315,6 +322,10 @@ class MockPrinter(PrinterAdapter):
             result["screws_tilt_adjust"] = {"error": False, "max_deviation": 0.02, "results": {}}
         if "toolhead" in objects:
             result["toolhead"] = {"max_accel": 3000.0, "square_corner_velocity": 5.0}
+        if "configfile" in objects:
+            result["configfile"] = {
+                "settings": {"extruder": {"pressure_advance": 0.0}}
+            }
         return result
 
     async def capabilities(self) -> PrinterCapabilities:

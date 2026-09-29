@@ -20,7 +20,7 @@ CAPABILITY_REQUIREMENTS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "probe_offset": (("PROBE_CALIBRATE",), ("probe",)),
     "pressure_advance": (("SET_PRESSURE_ADVANCE", "TUNING_TOWER"), ()),
     "flow": ((), ()),
-    "input_shaper": (("SHAPER_CALIBRATE", "ACCELEROMETER_QUERY"), ("resonance_tester",)),
+    "input_shaper": (("SHAPER_CALIBRATE", "MEASURE_AXES_NOISE"), ("resonance_tester",)),
 }
 
 
@@ -145,15 +145,25 @@ class CalibrationManager:
             data = {"heater": heater, "target": target}
         elif wizard == "pressure_advance":
             style = str(options.get("drive", "direct"))
+            if style not in {"direct", "bowden"}:
+                raise WizardError("Extruder-Typ muss Direct Drive oder Bowden sein")
             factor = 0.005 if style == "direct" else 0.020
-            toolhead = await self.printer.query_objects(
-                {"toolhead": ["max_accel", "square_corner_velocity"]}
+            status = await self.printer.query_objects(
+                {
+                    "toolhead": ["max_accel", "square_corner_velocity"],
+                    "configfile": ["settings"],
+                }
             )
-            limits = toolhead.get("toolhead", {})
+            limits = status.get("toolhead", {})
+            extruder_settings = (
+                status.get("configfile", {}).get("settings", {}).get(snapshot.extruder, {})
+            )
             data = {
                 "drive": style,
                 "start": 0.0,
                 "factor": factor,
+                "extruder": snapshot.extruder,
+                "original_pressure_advance": extruder_settings.get("pressure_advance", 0.0),
                 "model_url": "https://www.klipper3d.org/prints/square_tower.stl",
                 "original_max_accel": limits.get("max_accel"),
                 "original_square_corner_velocity": limits.get("square_corner_velocity"),
@@ -192,6 +202,7 @@ class CalibrationManager:
                     required = "SENSOR_READY" if wizard == "input_shaper" else "READY"
                     self._require_state(session, required)
                     await self._safe(wizard)
+                    session.state = "HOMING"
                     await self.printer.run_gcode("G28", long_running=True)
                     session.state = "HOMED"
                 elif wizard == "pid":
@@ -226,8 +237,9 @@ class CalibrationManager:
         if session.wizard == "pressure_advance" and session.state in {
             "PRINT_TOWER",
             "CALCULATED",
+            "APPLIED",
         }:
-            await self._restore_velocity_limits(session)
+            await self._restore_pressure_advance_test(session)
         if session.wizard in {"probe_offset", "bed_screws"} and session.state == "ADJUSTING":
             await self.printer.run_gcode("ABORT")
         session.save_token = None
@@ -386,7 +398,8 @@ class CalibrationManager:
             self._require_state(session, "CALCULATED")
             value = self._number(session.data.get("value"))
             await self.printer.run_gcode(
-                f"SET_PRESSURE_ADVANCE ADVANCE={value:.6f}\n"
+                f"SET_PRESSURE_ADVANCE EXTRUDER={session.data['extruder']} "
+                f"ADVANCE={value:.6f}\n"
                 + self._velocity_restore_command(session)
             )
             session.state = "APPLIED"
@@ -397,7 +410,9 @@ class CalibrationManager:
             if not self.config:
                 raise WizardError("Dauerhafte Konfigurationsänderungen sind deaktiviert")
             source, backup = self.config.upsert_numeric(
-                "extruder", "pressure_advance", self._number(session.data.get("value"))
+                str(session.data["extruder"]),
+                "pressure_advance",
+                self._number(session.data.get("value")),
             )
             session.data.update({"source": str(source), "backup": str(backup)})
             session.save_token = None
@@ -409,6 +424,16 @@ class CalibrationManager:
         command = self._velocity_restore_command(session)
         if command:
             await self.printer.run_gcode(command)
+
+    async def _restore_pressure_advance_test(self, session: CalibrationSession) -> None:
+        original = self._number(session.data.get("original_pressure_advance", 0.0))
+        commands = [
+            f"SET_PRESSURE_ADVANCE EXTRUDER={session.data['extruder']} ADVANCE={original:.6f}"
+        ]
+        velocity = self._velocity_restore_command(session)
+        if velocity:
+            commands.append(velocity)
+        await self.printer.run_gcode("\n".join(commands))
 
     @staticmethod
     def _velocity_restore_command(session: CalibrationSession) -> str:
@@ -428,7 +453,9 @@ class CalibrationManager:
         expected = self._number(values.get("expected"))
         current = self._number(values.get("current", 100))
         measurements = [self._number(value) for value in values.get("measurements", [])]
-        if expected <= 0 or not measurements or any(item <= 0 for item in measurements):
+        if len(measurements) != 4:
+            raise WizardError("Für die Flow-Berechnung sind genau vier Messwerte erforderlich")
+        if expected <= 0 or any(item <= 0 for item in measurements):
             raise WizardError("Sollmaß und Messwerte müssen größer als null sein")
         average = sum(measurements) / len(measurements)
         result = current * expected / average
@@ -443,7 +470,7 @@ class CalibrationManager:
         if action == "check":
             self._require_state(session, "READY")
             await self._safe("input_shaper", require_clean=True)
-            await self.printer.run_gcode("ACCELEROMETER_QUERY")
+            await self.printer.run_gcode("MEASURE_AXES_NOISE")
             session.state = "SENSOR_READY"
         elif action == "run":
             self._require_state(session, "HOMED")
