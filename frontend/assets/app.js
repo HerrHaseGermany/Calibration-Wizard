@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-23";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-24";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -251,7 +251,7 @@ function pendingConfigPage(wizardId) {
   statusStrip.classList.add("hidden");
   panel.innerHTML = `<span class="kicker">Offene Klipper-Werte</span>
     <h1>Vorhandene Änderungen auflösen</h1>
-    <p class="lead">Klipper hat bereits ungespeicherte <code>SAVE_CONFIG</code>-Werte. Entscheide zuerst, was mit ihnen passieren soll. Danach wird <strong>${esc(definition?.name || wizardId)}</strong> automatisch geöffnet.</p>
+    <p class="lead">Klipper hat bereits ungespeicherte Werte für <code>SAVE_CONFIG</code>. Entscheide zuerst, was mit ihnen passieren soll. Danach wird <strong>${esc(definition?.name || wizardId)}</strong> automatisch geöffnet.</p>
     ${pendingItemsMarkup(printer?.save_config_pending_items)}
     <p class="safety-note">„Speichern“ übernimmt alle oben aufgeführten Werte dauerhaft. „Verwerfen“ lädt die zuletzt gespeicherte Konfiguration neu. Beide Aktionen starten Klipper neu.</p>
     <div class="actions">${button("save-pending", "Vorhandene Werte speichern")} ${button("discard-pending", "Verwerfen und fortfahren", "danger ghost")} ${button("pending-back", "Zurück", "secondary")}</div>`;
@@ -786,7 +786,8 @@ async function restoreCalibration() {
   if (!saved?.wizard || !wizards.some(item=>item.id===saved.wizard)) return false;
   activeWizard = saved.wizard;
   if (!saved.id) {
-    if (saved.wizard === "extruder") welcome(); else openGeneric(saved.wizard);
+    if (cleanConfigWizards.has(saved.wizard) && printer?.save_config_pending) pendingConfigPage(saved.wizard);
+    else if (saved.wizard === "extruder") welcome(); else openGeneric(saved.wizard);
     return true;
   }
   const url = saved.wizard === "extruder" ? "wizards/extruder" : `wizards/${saved.wizard}/session`;
