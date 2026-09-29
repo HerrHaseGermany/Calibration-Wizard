@@ -101,6 +101,31 @@ def create_app(
         await printer.emergency_stop()
         return {"status": "shutdown"}
 
+    async def require_pending_config() -> None:
+        snapshot = await printer.snapshot()
+        if not snapshot.connected or snapshot.state != "ready":
+            raise WizardError("Klipper muss bereit sein, um offene Konfigurationswerte aufzulösen.")
+        if snapshot.print_state in {"printing", "paused"}:
+            raise WizardError(
+                "Offene Konfigurationswerte können nicht während eines Drucks aufgelöst werden."
+            )
+        if not snapshot.save_config_pending:
+            raise WizardError("Klipper hat keine ungespeicherten SAVE_CONFIG-Werte.")
+
+    @app.post("/api/pending-config/save")
+    async def save_pending_config(request: Request):
+        _check_same_origin(request)
+        await require_pending_config()
+        await printer.run_gcode("SAVE_CONFIG", long_running=True)
+        return {"status": "restarting", "action": "saved"}
+
+    @app.post("/api/pending-config/discard")
+    async def discard_pending_config(request: Request):
+        _check_same_origin(request)
+        await require_pending_config()
+        await printer.restart()
+        return {"status": "restarting", "action": "discarded"}
+
     @app.get("/api/wizards")
     async def list_wizards():
         return await calibrations.definitions(WIZARDS)

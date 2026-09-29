@@ -160,6 +160,9 @@ a { color: #ff9a6e; }
 .remove-point { height:42px; border:1px solid var(--border); border-radius:9px; background:transparent; color:var(--danger); cursor:pointer; }
 .config-preview { white-space:pre-wrap; padding:18px; border:1px solid var(--border); border-radius:10px; background:var(--field); color:var(--good); max-height:340px; overflow:auto; }
 .warning-list { padding: 16px 18px 16px 36px; border-radius: 10px; background: #2b2412; color: #ffdc84; }
+.pending-values { margin:24px 0; padding:16px 18px; border:1px solid var(--border); border-radius:10px; background:var(--subtle); }
+.pending-values strong { display:block; margin-bottom:10px; }
+.pending-values pre { margin:0; max-height:220px; overflow:auto; white-space:pre-wrap; color:var(--text); font-size:12px; }
 .model-download { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:16px; align-items:center; margin:26px 0 16px; padding:16px; border:1px solid var(--border); border-radius:12px; background:var(--subtle); }
 .model-download h3, .slicer-settings h3 { margin:0 0 6px; }
 .model-download p { margin:0; font-size:13px; line-height:1.45; }

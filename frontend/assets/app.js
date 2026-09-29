@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-22";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-23";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -19,6 +19,9 @@ let isOverview = true;
 let resumeMode = false;
 let bootstrapping = true;
 const resumeStorageKey = "kcw-active-calibration";
+const pendingResolutionStorageKey = "kcw-pending-config-resolution";
+const cleanConfigWizards = new Set(["pid", "bed_mesh", "probe_offset", "input_shaper"]);
+let resolvingPendingConfig = false;
 
 function rememberCalibration(wizard, id = null) {
   sessionStorage.setItem(resumeStorageKey, JSON.stringify({wizard, id}));
@@ -27,6 +30,11 @@ function rememberCalibration(wizard, id = null) {
 function forgetCalibration() {
   sessionStorage.removeItem(resumeStorageKey);
   resumeMode = false;
+}
+
+function pendingResolution() {
+  try { return JSON.parse(sessionStorage.getItem(pendingResolutionStorageKey)); }
+  catch { sessionStorage.removeItem(pendingResolutionStorageKey); return null; }
 }
 
 function printerIsReady() {
@@ -150,7 +158,8 @@ function dashboard() {
     <div class="calibration-phases">${cards}${unavailableCards}</div>`;
   const openWizard = (card) => {
     const id = card.dataset.wizard;
-    if (id === "extruder") welcome(); else openGeneric(id);
+    if (cleanConfigWizards.has(id) && printer?.save_config_pending) pendingConfigPage(id);
+    else if (id === "extruder") welcome(); else openGeneric(id);
   };
   document.querySelectorAll("[data-wizard]").forEach((card) => {
     card.addEventListener("click", () => openWizard(card));
@@ -216,6 +225,81 @@ async function api(path, body) {
   if (!response.ok) throw new Error(data.detail || "Request failed");
   session = data.session || data;
   return data;
+}
+
+async function postCommand(path) {
+  clearError();
+  const response = await fetch(new URL(path, base), {method:"POST"});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || "Request failed");
+  return data;
+}
+
+function pendingItemsMarkup(items) {
+  const entries = Object.entries(items || {});
+  if (!entries.length) return "";
+  return `<div class="pending-values"><strong>Betroffene Konfigurationswerte</strong><pre>${esc(JSON.stringify(items, null, 2))}</pre></div>`;
+}
+
+function pendingConfigPage(wizardId) {
+  const definition = wizards.find((item) => item.id === wizardId);
+  activeWizard = null;
+  setOverviewState(false);
+  emergencyButton.classList.add("hidden");
+  rail.classList.add("hidden");
+  workspace.classList.add("menu-mode");
+  statusStrip.classList.add("hidden");
+  panel.innerHTML = `<span class="kicker">Offene Klipper-Werte</span>
+    <h1>Vorhandene Änderungen auflösen</h1>
+    <p class="lead">Klipper hat bereits ungespeicherte <code>SAVE_CONFIG</code>-Werte. Entscheide zuerst, was mit ihnen passieren soll. Danach wird <strong>${esc(definition?.name || wizardId)}</strong> automatisch geöffnet.</p>
+    ${pendingItemsMarkup(printer?.save_config_pending_items)}
+    <p class="safety-note">„Speichern“ übernimmt alle oben aufgeführten Werte dauerhaft. „Verwerfen“ lädt die zuletzt gespeicherte Konfiguration neu. Beide Aktionen starten Klipper neu.</p>
+    <div class="actions">${button("save-pending", "Vorhandene Werte speichern")} ${button("discard-pending", "Verwerfen und fortfahren", "danger ghost")} ${button("pending-back", "Zurück", "secondary")}</div>`;
+  bind("save-pending", () => resolvePendingConfig(wizardId, "save"));
+  bind("discard-pending", () => resolvePendingConfig(wizardId, "discard"));
+  bind("pending-back", dashboard);
+}
+
+async function resolvePendingConfig(wizardId, action) {
+  resolvingPendingConfig = true;
+  sessionStorage.setItem(pendingResolutionStorageKey, JSON.stringify({wizard:wizardId, action}));
+  try {
+    await postCommand(`pending-config/${action}`);
+  } catch (error) {
+    resolvingPendingConfig = false;
+    sessionStorage.removeItem(pendingResolutionStorageKey);
+    throw error;
+  }
+  pendingConfigWaitingPage(wizardId, action);
+  resolvingPendingConfig = false;
+}
+
+function pendingConfigWaitingPage(wizardId, action) {
+  const definition = wizards.find((item) => item.id === wizardId);
+  activeWizard = null;
+  setOverviewState(false);
+  emergencyButton.classList.add("hidden");
+  rail.classList.add("hidden");
+  workspace.classList.add("menu-mode");
+  statusStrip.classList.add("hidden");
+  panel.innerHTML = `<span class="kicker">Klipper-Neustart</span><h1>${action === "save" ? "Werte werden gespeichert" : "Werte werden verworfen"}</h1>
+    <p class="lead">Klipper startet neu. Sobald die Firmware wieder bereit ist, öffnet der Wizard automatisch <strong>${esc(definition?.name || wizardId)}</strong>.</p>
+    <div class="running-state"><span class="spinner"></span><strong>Warte auf Klipper…</strong></div>
+    <div class="actions">${button("pending-cancel", "Zur Übersicht", "secondary")}</div>`;
+  bind("pending-cancel", () => { sessionStorage.removeItem(pendingResolutionStorageKey); resolvingPendingConfig=false; dashboard(); });
+}
+
+function continueAfterPendingResolution() {
+  const pending = pendingResolution();
+  if (!pending?.wizard || resolvingPendingConfig || !printerIsReady() || printer?.save_config_pending) return false;
+  resolvingPendingConfig = true;
+  sessionStorage.removeItem(pendingResolutionStorageKey);
+  const wizardId = pending.wizard;
+  queueMicrotask(() => {
+    resolvingPendingConfig = false;
+    if (wizardId === "extruder") welcome(); else openGeneric(wizardId);
+  });
+  return true;
 }
 
 async function startCalibration(id, options = {}) {
@@ -740,6 +824,7 @@ function updateStatus(data) {
   document.querySelector("#klipper-state").textContent = printer.state;
   connection.className = `connection ${printer.connected ? "online" : "offline"}`;
   document.querySelector("#connection").textContent = printer.connected ? "Printer connected" : "Printer offline";
+  if (!bootstrapping && pendingResolution() && continueAfterPendingResolution()) return;
   if (!bootstrapping && isOverview && previousReadiness !== printerReadinessKey()) dashboard();
   if (resumeMode && session?.state !== previousSessionState) {
     if (activeWizard === "extruder") renderResumedExtruder(); else renderResumedGeneric(activeWizard);
@@ -766,6 +851,12 @@ Promise.all([
 ]).then(async ([status, availableWizards]) => {
   wizards = availableWizards;
   updateStatus(status);
+  const pending = pendingResolution();
+  if (pending?.wizard) {
+    bootstrapping = false;
+    if (!continueAfterPendingResolution()) pendingConfigWaitingPage(pending.wizard, pending.action);
+    return;
+  }
   const restored = await restoreCalibration();
   bootstrapping = false;
   if (!restored) dashboard();

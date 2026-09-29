@@ -289,6 +289,9 @@ class MockPrinter(PrinterAdapter):
 
     async def restart(self) -> None:
         self.data.state = "ready"
+        self.data.homed_axes = ""
+        self.data.save_config_pending = False
+        self.data.save_config_pending_items = {}
 
     async def emergency_stop(self) -> None:
         self.data.state = "shutdown"

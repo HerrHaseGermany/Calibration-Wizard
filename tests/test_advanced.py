@@ -176,6 +176,80 @@ def test_flow_calibration_model_is_downloadable(tmp_path: Path):
     assert response.text.count("facet normal") == 12
 
 
+def test_pending_config_can_be_saved_before_calibration(tmp_path: Path):
+    settings = Settings(
+        host="127.0.0.1",
+        port=7130,
+        mock=True,
+        moonraker_url="http://127.0.0.1:7125",
+        moonraker_api_key=None,
+        klipper_config=None,
+        backup_dir=tmp_path / "backups",
+        frontend_dir=tmp_path,
+    )
+    printer = MockPrinter()
+    printer.data.save_config_pending = True
+    printer.data.save_config_pending_items = {"extruder": {"control": "pid"}}
+    client = TestClient(create_app(settings, printer))
+
+    response = client.post("/api/pending-config/save")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "restarting", "action": "saved"}
+    assert printer.gcodes[-1] == "SAVE_CONFIG"
+    assert printer.data.save_config_pending is False
+    assert printer.data.save_config_pending_items == {}
+
+
+def test_pending_config_can_be_discarded_before_calibration(tmp_path: Path):
+    settings = Settings(
+        host="127.0.0.1",
+        port=7130,
+        mock=True,
+        moonraker_url="http://127.0.0.1:7125",
+        moonraker_api_key=None,
+        klipper_config=None,
+        backup_dir=tmp_path / "backups",
+        frontend_dir=tmp_path,
+    )
+    printer = MockPrinter()
+    printer.data.homed_axes = "xyz"
+    printer.data.save_config_pending = True
+    printer.data.save_config_pending_items = {"bed_mesh": {"profile": "default"}}
+    client = TestClient(create_app(settings, printer))
+
+    response = client.post("/api/pending-config/discard")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "restarting", "action": "discarded"}
+    assert printer.data.save_config_pending is False
+    assert printer.data.save_config_pending_items == {}
+    assert printer.data.homed_axes == ""
+
+
+def test_pending_config_resolution_is_blocked_during_print(tmp_path: Path):
+    settings = Settings(
+        host="127.0.0.1",
+        port=7130,
+        mock=True,
+        moonraker_url="http://127.0.0.1:7125",
+        moonraker_api_key=None,
+        klipper_config=None,
+        backup_dir=tmp_path / "backups",
+        frontend_dir=tmp_path,
+    )
+    printer = MockPrinter()
+    printer.data.print_state = "printing"
+    printer.data.save_config_pending = True
+    client = TestClient(create_app(settings, printer))
+
+    response = client.post("/api/pending-config/discard")
+
+    assert response.status_code == 409
+    assert "während eines Drucks" in response.json()["detail"]
+    assert printer.data.save_config_pending is True
+
+
 def test_emergency_stop_uses_immediate_printer_endpoint(tmp_path: Path):
     settings = Settings(
         host="127.0.0.1",
