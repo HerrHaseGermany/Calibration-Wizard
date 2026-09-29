@@ -132,7 +132,7 @@ emergencyButton.addEventListener("click", async () => {
     if (!response.ok) throw new Error(result.detail || "Not-Aus konnte nicht ausgelöst werden");
     session = null;
     emergencyButton.querySelector(".header-button-label").textContent = "GESTOPPT";
-    showError("NOT-AUS ausgelöst. Klipper befindet sich im Shutdown-Zustand. Prüfe den Drucker und führe erst danach einen Firmware-Neustart aus.");
+    window.location.assign(document.querySelector("#mainsail-button").href);
   } catch (error) {
     emergencyButton.disabled = false;
     emergencyButton.querySelector(".header-button-label").textContent = "NOT-AUS";
