@@ -128,7 +128,8 @@ python3 "${PROJECT_DIR}/scripts/configure_mainsail.py" \
 chown "${TARGET_USER}:${TARGET_GROUP}" "${MAINSAIL_NAVI}"
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now "${SERVICE_NAME}.service"
+sudo systemctl enable "${SERVICE_NAME}.service"
+sudo systemctl restart "${SERVICE_NAME}.service"
 sudo systemctl restart moonraker.service
 if [[ -f "${NGINX_SITE}" ]] && command -v nginx >/dev/null; then sudo systemctl reload nginx; fi
 healthy=false

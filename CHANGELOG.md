@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Ensure rerunning the installer restarts an already active Wizard service so newly installed code is loaded immediately.
+
 ## 0.1.0
 
 - Added separate Moonraker-backed service and responsive web UI.
