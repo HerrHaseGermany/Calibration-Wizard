@@ -119,7 +119,9 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,107,44
 .calibration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .calibration-card { min-height: 190px; padding: 22px; border: 1px solid var(--border); border-radius: 15px; background: var(--card); display: flex; flex-direction: column; align-items: flex-start; text-align: left; color: var(--text); }
 .calibration-card { transition: .18s ease; }
+.calibration-card[data-wizard] { cursor:pointer; }
 .calibration-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.calibration-card[data-wizard]:focus-visible { outline:3px solid color-mix(in srgb, var(--accent) 42%, transparent); outline-offset:3px; border-color:var(--accent); }
 .calibration-card.unavailable { opacity: .58; }
 .calibration-card h3 { margin: 16px 0 8px; font-size: 21px; }
 .calibration-card p { margin: 0; font-size: 14px; }

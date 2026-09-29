@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-20";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-21";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -123,9 +123,10 @@ function dashboard() {
     const configured = wizard.configuration?.point_count ? `<span class="configured">${wizard.configuration.point_count} Punkte erkannt</span>` : "";
     const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${ready ? "" : "disabled"}>Einrichten</button>` : "";
     if (wizard.available) {
-      return `<div class="calibration-card ${ready ? "" : "printer-blocked"}">
+      const interaction = ready ? `data-wizard="${wizard.id}" role="button" tabindex="0"` : "";
+      return `<div class="calibration-card ${ready ? "" : "printer-blocked"}" ${interaction}>
         <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
-        ${configured}<div class="card-buttons"><button class="card-start" type="button" data-wizard="${wizard.id}" ${ready ? "" : "disabled"}>Jetzt starten →</button>${setup}</div></div>`;
+        ${configured}<div class="card-buttons"><button class="card-start" type="button" ${ready ? "" : "disabled"}>Jetzt starten →</button>${setup}</div></div>`;
     }
     return `<div class="calibration-card unavailable">
       <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
@@ -147,11 +148,15 @@ function dashboard() {
   panel.innerHTML = `<span class="kicker">Kalibrierzentrale</span><h1>Kalibrierung auswählen</h1>
     ${printerReadinessNotice()}
     <div class="calibration-phases">${cards}${unavailableCards}</div>`;
-  document.querySelectorAll("[data-wizard]").forEach((card) => card.addEventListener("click", () => {
+  const openWizard = (card) => {
     const id = card.dataset.wizard;
     if (id === "extruder") welcome(); else openGeneric(id);
-  }));
-  document.querySelectorAll("[data-setup]").forEach((control) => control.addEventListener("click", async () => { try { await openSetup(control.dataset.setup); } catch(error) { showError(error.message); } }));
+  };
+  document.querySelectorAll("[data-wizard]").forEach((card) => {
+    card.addEventListener("click", () => openWizard(card));
+    card.addEventListener("keydown", (event) => { if(event.target===card && (event.key === "Enter" || event.key === " ")){event.preventDefault();openWizard(card);} });
+  });
+  document.querySelectorAll("[data-setup]").forEach((control) => control.addEventListener("click", async (event) => { event.stopPropagation(); try { await openSetup(control.dataset.setup); } catch(error) { showError(error.message); } }));
 }
 
 async function returnHome() {
