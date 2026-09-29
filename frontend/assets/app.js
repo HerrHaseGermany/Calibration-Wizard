@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-17";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-18";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -16,6 +16,18 @@ let wizards = [];
 let uiStep = 0;
 let activeWizard = null;
 let isOverview = true;
+let resumeMode = false;
+let bootstrapping = true;
+const resumeStorageKey = "kcw-active-calibration";
+
+function rememberCalibration(wizard, id = null) {
+  sessionStorage.setItem(resumeStorageKey, JSON.stringify({wizard, id}));
+}
+
+function forgetCalibration() {
+  sessionStorage.removeItem(resumeStorageKey);
+  resumeMode = false;
+}
 
 function printerIsReady() {
   return Boolean(printer?.connected && printer.state === "ready");
@@ -95,6 +107,8 @@ function setProgress(step) {
 }
 
 function dashboard() {
+  forgetCalibration();
+  session = null;
   setOverviewState(true);
   emergencyButton.classList.add("hidden");
   emergencyButton.disabled = false;
@@ -190,7 +204,9 @@ async function api(path, body) {
 
 async function startCalibration(id, options = {}) {
   activeWizard = id;
-  return api(`wizards/${id}/start`, { options });
+  const result = await api(`wizards/${id}/start`, { options });
+  rememberCalibration(id, session.id);
+  return result;
 }
 
 async function calibrationAction(action, values = {}, confirmationToken = null) {
@@ -215,6 +231,7 @@ function bind(id, handler) {
 
 function welcome() {
   activeWizard = "extruder";
+  rememberCalibration("extruder");
   setSteps("Extruder kalibrieren", t("steps"));
   setProgress(0);
   panel.innerHTML = `
@@ -225,7 +242,7 @@ function welcome() {
       <div class="detail"><span>Current rotation distance</span><strong>${printer?.rotation_distance?.toFixed(5) || "—"} mm</strong></div>
     </div>
     <div class="actions">${button("start", "Start calibration")}</div>`;
-  bind("start", async () => { await api("wizards/extruder/start", { mark_distance: 120, commanded_extrusion: 100 }); heat(); });
+  bind("start", async () => { await api("wizards/extruder/start", { mark_distance: 120, commanded_extrusion: 100 }); rememberCalibration("extruder", session.id); heat(); });
 }
 
 const genericSteps = {
@@ -260,6 +277,7 @@ function genericFrame(id, step) {
 }
 
 function openGeneric(id) {
+  rememberCalibration(id);
   genericFrame(id, 0);
   if (id === "pid") return pidSetup();
   if (id === "pressure_advance") return pressureSetup();
@@ -389,7 +407,13 @@ function pidSetup() {
     <label for="heater">Heizer</label><select id="heater"><option value="extruder">Hotend</option><option value="heater_bed">Heizbett</option></select>
     <label for="pid-target">Zieltemperatur · 5 °C Schritte</label><div class="input-row"><input id="pid-target" type="number" value="220" min="150" max="300" step="5"><span class="unit">°C</span></div><div class="actions">${button("pid-start", "PID-Tuning starten")}</div>`;
   document.querySelector("#heater").addEventListener("change", (event) => { const bed=event.target.value==="heater_bed"; const input=document.querySelector("#pid-target"); input.value=bed?60:220; input.min=bed?30:150; input.max=bed?130:300; });
-  bind("pid-start", async () => { const heater=document.querySelector("#heater").value; const target=Number(document.querySelector("#pid-target").value); await startCalibration("pid", {heater,target}); genericFrame("pid",1); panel.innerHTML=`<span class="kicker">Heizzyklen</span><h2>PID-Tuning bereit</h2>${pidSelectionSummary()}<p>Während der Messung werden hohe Temperaturen erreicht. Nach dem ersten Aufheizen folgen mehrere kurze Heiz- und Abkühlphasen um die Zieltemperatur. Lasse den Drucker nicht unbeaufsichtigt.</p><div class="actions">${button("run","Messung ausführen")}</div>`; bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>PID-Tuning läuft…'; await calibrationAction("run"); saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary());}); });
+  bind("pid-start", async () => { const heater=document.querySelector("#heater").value; const target=Number(document.querySelector("#pid-target").value); await startCalibration("pid", {heater,target}); pidReadyPage(); });
+}
+
+function pidReadyPage() {
+  genericFrame("pid",1);
+  panel.innerHTML=`<span class="kicker">Heizzyklen</span><h2>PID-Tuning bereit</h2>${pidSelectionSummary()}<p>Während der Messung werden hohe Temperaturen erreicht. Nach dem ersten Aufheizen folgen mehrere kurze Heiz- und Abkühlphasen um die Zieltemperatur. Lasse den Drucker nicht unbeaufsichtigt.</p><div class="actions">${button("run","Messung ausführen")}</div>`;
+  bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>PID-Tuning läuft…'; await calibrationAction("run"); saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary());});
 }
 
 function pidSelectionSummary() {
@@ -433,7 +457,13 @@ function flowSetup() {
     <div class="slicer-settings"><h3>Slicer-Einstellungen</h3><ul><li>Wände / Perimeter: <strong>1</strong></li><li>Deckschichten: <strong>0</strong></li><li>Infill: <strong>0 %</strong></li><li>Bodenschichten: <strong>3</strong></li><li>Linienbreite: <strong>0,40 mm</strong> (bei 0,4-mm-Düse)</li><li>Spiral-/Vasenmodus: <strong>deaktiviert</strong></li></ul></div>
     <p class="measurement-hint">Miss jede Seitenwand mittig, deutlich entfernt von Ecken und untersten Schichten. Verwende bei einer anderen Linienbreite diesen Wert als Sollstärke.</p>
     <div class="detail-grid"><div><label>Sollstärke</label><input id="flow-expected" type="number" value="0.4" min="0.1" step="0.01"></div><div><label>Aktueller Flow</label><input id="flow-current" type="number" value="100" min="70" max="130" step="0.1"></div>${[1,2,3,4].map(n=>`<div><label>Messung ${n}</label><input class="flow-measure" type="number" min="0.1" step="0.01"></div>`).join("")}</div><div class="actions">${button("flow-calc","Extrusionsfaktor berechnen")}</div>`;
-  bind("flow-calc",async()=>{await startCalibration("flow"); await calibrationAction("calculate",{expected:Number(document.querySelector("#flow-expected").value),current:Number(document.querySelector("#flow-current").value),measurements:[...document.querySelectorAll(".flow-measure")].map(i=>Number(i.value))}); genericFrame("flow",2); panel.innerHTML=`<span class="kicker">Ergebnis</span><h2>${session.data.result.toFixed(1)} % Flow</h2><p>Mittlere gemessene Wandstärke: ${session.data.average.toFixed(3)} mm. Übernimm den neuen Wert in dein Filamentprofil im Slicer und drucke zur Kontrolle erneut.</p><div class="actions">${button("done","Fertig")}</div>`; bind("done",dashboard);});
+  bind("flow-calc",async()=>{await startCalibration("flow"); await calibrationAction("calculate",{expected:Number(document.querySelector("#flow-expected").value),current:Number(document.querySelector("#flow-current").value),measurements:[...document.querySelectorAll(".flow-measure")].map(i=>Number(i.value))}); flowResultPage();});
+}
+
+function flowResultPage() {
+  genericFrame("flow",2);
+  panel.innerHTML=`<span class="kicker">Ergebnis</span><h2>${session.data.result.toFixed(1)} % Flow</h2><p>Mittlere gemessene Wandstärke: ${session.data.average.toFixed(3)} mm. Übernimm den neuen Wert in dein Filamentprofil im Slicer und drucke zur Kontrolle erneut.</p><div class="actions">${button("done","Fertig")}</div>`;
+  bind("done",dashboard);
 }
 
 function shaperSetup() {
@@ -559,8 +589,121 @@ document.querySelector("#cancel").addEventListener("click", async () => {
   } catch (error) { showError(error.message); }
 });
 
+function resumedRunningPage(id, title = "Kalibrierung läuft") {
+  if (id === "extruder") {
+    setSteps("Extruder kalibrieren", t("steps"));
+    setProgress(session.state === "VERIFYING" ? 6 : 3);
+  } else {
+    const steps = {pid:1, bed_mesh:2, screws_tilt:1, z_tilt:2, quad_gantry_level:2, input_shaper:2};
+    genericFrame(id, steps[id] ?? 1);
+  }
+  const selection = id === "pid" ? pidSelectionSummary() : "";
+  panel.innerHTML=`<span class="kicker">Laufende Kalibrierung</span><h2>${title}</h2>${selection}<p>Der Drucker führt den laufenden Schritt weiter aus. Diese Ansicht wechselt automatisch zum nächsten Schritt, sobald Klipper fertig ist.</p><div class="running-state"><span class="spinner"></span><strong>Bitte warten…</strong></div>`;
+}
+
+function resumedErrorPage(id) {
+  if (id === "extruder") { setSteps("Extruder kalibrieren", t("steps")); setProgress(0); }
+  else genericFrame(id, 0);
+  panel.innerHTML=`<span class="kicker">Kalibrierung unterbrochen</span><h2>Der Ablauf kann nicht fortgesetzt werden</h2><p>${esc(session.error || "Klipper hat während der Kalibrierung einen Fehler gemeldet.")}</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`;
+  bind("dashboard",dashboard);
+}
+
+function renderResumedExtruder() {
+  switch (session.state) {
+    case "IDLE": heat(); break;
+    case "HEATING": heat(); break;
+    case "READY": mark(); break;
+    case "RUNNING": resumedRunningPage("extruder", "Extrusion läuft"); break;
+    case "WAITING_FOR_MEASUREMENT": measure(false); break;
+    case "CALCULATED": result(false); break;
+    case "APPLIED": verify(); break;
+    case "VERIFYING": resumedRunningPage("extruder", "Prüfextrusion läuft"); break;
+    case "COMPLETE":
+      if (session.verification_result && session.save_token) result(true);
+      else { setSteps("Extruder kalibrieren", t("steps")); setProgress(7); completePage("Extruder-Kalibrierung"); }
+      break;
+    case "ERROR": resumedErrorPage("extruder"); break;
+    default: dashboard();
+  }
+}
+
+function renderResumedGeneric(id) {
+  const state = session.state;
+  if (state === "ERROR") return resumedErrorPage(id);
+  if (state === "RUNNING") return resumedRunningPage(id);
+  if (state === "COMPLETE") {
+    if (id === "flow" && Number.isFinite(session.data?.result)) return flowResultPage();
+    genericFrame(id, (genericSteps[id]?.length || 1) - 1); return completePage(wizards.find(item=>item.id===id)?.name || "Kalibrierung");
+  }
+  if (id === "pid") {
+    if (state === "READY") return pidReadyPage();
+    if (state === "REVIEW") return saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary());
+  }
+  if (id === "bed_mesh") {
+    if (state === "READY") return homingPage(id);
+    if (state === "HOMED") return bedMeshRun();
+    if (state === "REVIEW") return saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert.");
+  }
+  if (id === "screws_tilt") {
+    if (state === "READY") return homingPage(id);
+    if (state === "HOMED") return screwsRun();
+    if (state === "REVIEW") return screwsResult();
+  }
+  if (id === "bed_screws") {
+    if (state === "READY") return homingPage(id);
+    if (state === "HOMED") return bedScrewsRun();
+    if (state === "ADJUSTING") return bedScrewsAdjust();
+  }
+  if (id === "probe_offset") {
+    if (state === "READY") return homingPage(id);
+    if (state === "HOMED") return probeRun();
+    if (state === "ADJUSTING") return probeAdjust();
+    if (state === "REVIEW") return saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert.");
+  }
+  if (id === "z_tilt" || id === "quad_gantry_level") {
+    if (state === "READY") return homingPage(id);
+    if (state === "HOMED") return gantryRun(id);
+  }
+  if (id === "pressure_advance") {
+    if (state === "READY") return pressurePrint();
+    if (state === "PRINT_TOWER") return pressureMeasure();
+    if (state === "CALCULATED") return pressureResult();
+    if (state === "APPLIED") return saveLocalPage("Pressure Advance",`Neuer Wert: ${session.data.value.toFixed(6)}`);
+  }
+  if (id === "input_shaper") {
+    if (state === "READY") return resumedRunningPage(id, "Beschleunigungssensor wird geprüft");
+    if (state === "SENSOR_READY") return shaperHome();
+    if (state === "HOMED") return shaperRun();
+    if (state === "REVIEW") return saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.");
+  }
+  if (id === "flow" && state === "READY") return flowSetup();
+  dashboard();
+}
+
+async function restoreCalibration() {
+  let saved;
+  try { saved = JSON.parse(sessionStorage.getItem(resumeStorageKey)); } catch { forgetCalibration(); return false; }
+  if (!saved?.wizard || !wizards.some(item=>item.id===saved.wizard)) return false;
+  activeWizard = saved.wizard;
+  if (!saved.id) {
+    if (saved.wizard === "extruder") welcome(); else openGeneric(saved.wizard);
+    return true;
+  }
+  const url = saved.wizard === "extruder" ? "wizards/extruder" : `wizards/${saved.wizard}/session`;
+  const response = await fetch(new URL(url,base));
+  if (!response.ok) return false;
+  const payload = await response.json();
+  const recovered = saved.wizard === "extruder" ? payload.session : payload;
+  if (!recovered || recovered.id !== saved.id || recovered.state === "CANCELLED") return false;
+  session = recovered;
+  resumeMode = true;
+  if (saved.wizard === "extruder") renderResumedExtruder(); else renderResumedGeneric(saved.wizard);
+  return true;
+}
+
 function updateStatus(data) {
   const previousReadiness = printerReadinessKey();
+  const previousSessionState = session?.state;
   printer = data.printer;
   if (activeWizard === "extruder" && data.session) session = data.session;
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
@@ -581,7 +724,10 @@ function updateStatus(data) {
   document.querySelector("#klipper-state").textContent = printer.state;
   connection.className = `connection ${printer.connected ? "online" : "offline"}`;
   document.querySelector("#connection").textContent = printer.connected ? "Printer connected" : "Printer offline";
-  if (isOverview && previousReadiness !== printerReadinessKey()) dashboard();
+  if (!bootstrapping && isOverview && previousReadiness !== printerReadinessKey()) dashboard();
+  if (resumeMode && session?.state !== previousSessionState) {
+    if (activeWizard === "extruder") renderResumedExtruder(); else renderResumedGeneric(activeWizard);
+  }
 }
 
 function connect() {
@@ -593,7 +739,7 @@ function connect() {
     connection.className = "connection offline";
     document.querySelector("#connection").textContent = "Reconnecting";
     if (printer) printer = {...printer, connected:false, state:"disconnected", state_message:""};
-    if (isOverview) dashboard();
+    if (!bootstrapping && isOverview) dashboard();
     setTimeout(connect, 2000);
   };
 }
@@ -601,7 +747,11 @@ function connect() {
 Promise.all([
   fetch(new URL("status", base)).then((r) => r.json()),
   fetch(new URL("wizards", base)).then((r) => r.json()),
-]).then(([status, availableWizards]) => {
-  updateStatus(status); wizards = availableWizards; dashboard();
-}).catch((error) => { showError(error.message); dashboard(); });
+]).then(async ([status, availableWizards]) => {
+  wizards = availableWizards;
+  updateStatus(status);
+  const restored = await restoreCalibration();
+  bootstrapping = false;
+  if (!restored) dashboard();
+}).catch((error) => { bootstrapping=false; dashboard(); showError(error.message); });
 connect();

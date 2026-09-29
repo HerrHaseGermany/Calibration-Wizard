@@ -101,6 +101,34 @@ def test_extruder_specific_start_route_wins_over_generic_route(tmp_path: Path):
 
     assert response.status_code == 200
     assert response.json()["extruder"] == "extruder"
+    restored = client.get("/api/wizards/extruder")
+    assert restored.status_code == 200
+    assert restored.json()["session"]["id"] == response.json()["id"]
+
+
+def test_generic_session_can_be_restored_after_navigation(tmp_path: Path):
+    settings = Settings(
+        host="127.0.0.1",
+        port=7130,
+        mock=True,
+        moonraker_url="http://127.0.0.1:7125",
+        moonraker_api_key=None,
+        klipper_config=None,
+        backup_dir=tmp_path / "backups",
+        frontend_dir=tmp_path,
+    )
+    client = TestClient(create_app(settings, MockPrinter()))
+    started = client.post(
+        "/api/wizards/pid/start",
+        json={"options": {"heater": "extruder", "target": 220}},
+    )
+
+    restored = client.get("/api/wizards/pid/session")
+
+    assert started.status_code == 200
+    assert restored.status_code == 200
+    assert restored.json()["id"] == started.json()["id"]
+    assert restored.json()["state"] == "READY"
 
 
 def test_status_exposes_hotend_and_bed_temperatures(tmp_path: Path):
