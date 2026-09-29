@@ -93,6 +93,8 @@ class ExtruderWizard:
                 self.session.state = WizardState.ERROR
                 self.session.error = f"Klipper state is {snapshot.state}"
             raise WizardError(f"Klipper must be ready (current state: {snapshot.state})")
+        if snapshot.print_state in {"printing", "paused"}:
+            raise WizardError("Extruder calibration is blocked while a print is active or paused")
         return snapshot
 
     async def start(self, mark_distance: float, commanded_extrusion: float) -> WizardSession:
@@ -239,7 +241,9 @@ class ExtruderWizard:
             raise WizardError("Cannot cancel while the synchronous extrusion command is running")
         if session.save_token and session.state in {WizardState.APPLIED, WizardState.COMPLETE}:
             await self._safe_snapshot()
-            await self.printer.set_rotation_distance(session.extruder, session.old_rotation_distance)
+            await self.printer.set_rotation_distance(
+                session.extruder, session.old_rotation_distance
+            )
         session.state = WizardState.CANCELLED
         session.save_token = None
         return session

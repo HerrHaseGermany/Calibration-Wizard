@@ -100,7 +100,7 @@ The existing MIT license was retained. Contributions should include domain tests
 ## Calibration availability
 
 The API evaluates the live Klipper command list, object list, and configuration on every dashboard
-load. Input Shaper requires both `[resonance_tester]` and the commands `ACCELEROMETER_QUERY` and
+load. Input Shaper requires both `[resonance_tester]` and the commands `MEASURE_AXES_NOISE` and
 `SHAPER_CALIBRATE`. Its card remains visible but disabled until those requirements are present.
 
 Future work includes calibration history, printer profiles, first-layer analysis, and community

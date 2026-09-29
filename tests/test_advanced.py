@@ -23,7 +23,7 @@ def test_input_shaper_is_disabled_until_sensor_commands_exist():
 
 def test_input_shaper_activates_automatically_with_complete_configuration():
     caps = PrinterCapabilities(
-        commands=["SHAPER_CALIBRATE", "ACCELEROMETER_QUERY"],
+        commands=["SHAPER_CALIBRATE", "MEASURE_AXES_NOISE"],
         settings=["input_shaper", "resonance_tester"],
     )
 
@@ -76,9 +76,193 @@ async def test_pressure_advance_restores_velocity_limits_when_applied():
 
     await manager.action("pressure_advance", "apply", {}, None)
 
-    assert "SET_PRESSURE_ADVANCE ADVANCE=0.050000" in printer.gcodes[-1]
+    assert "SET_PRESSURE_ADVANCE EXTRUDER=extruder ADVANCE=0.050000" in printer.gcodes[-1]
     assert "ACCEL=3000" in printer.gcodes[-1]
     assert "SQUARE_CORNER_VELOCITY=5" in printer.gcodes[-1]
+
+
+@pytest.mark.asyncio
+async def test_pid_workflow_runs_and_saves_only_after_confirmation():
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    session = await manager.start("pid", {"heater": "heater_bed", "target": 60})
+
+    result = await manager.action("pid", "run", {}, None)
+
+    assert result.state == "REVIEW"
+    assert printer.gcodes[-1] == "PID_CALIBRATE HEATER=heater_bed TARGET=60"
+    saved = await manager.action("pid", "save", {}, session.save_token)
+    assert saved.state == "COMPLETE"
+    assert printer.gcodes[-1] == "SAVE_CONFIG"
+
+
+@pytest.mark.asyncio
+async def test_bed_mesh_workflow_homes_measures_and_waits_for_save():
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    await manager.start("bed_mesh", {})
+
+    homed = await manager.action("bed_mesh", "home", {}, None)
+    assert homed.state == "HOMED"
+    measured = await manager.action("bed_mesh", "run", {}, None)
+
+    assert measured.state == "REVIEW"
+    assert printer.gcodes[:2] == ["G28", "BED_MESH_CALIBRATE PROFILE=default"]
+    assert measured.data["result"]["profile_name"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_screw_workflows_follow_their_interactive_protocols():
+    tilt_printer = MockPrinter()
+    tilt = CalibrationManager(tilt_printer)
+    await tilt.start("screws_tilt", {})
+    await tilt.action("screws_tilt", "home", {}, None)
+    tilt_result = await tilt.action("screws_tilt", "calculate", {}, None)
+    assert tilt_result.state == "REVIEW"
+    assert tilt_printer.gcodes[-1] == "SCREWS_TILT_CALCULATE"
+
+    manual_printer = MockPrinter()
+    manual = CalibrationManager(manual_printer)
+    await manual.start("bed_screws", {})
+    await manual.action("bed_screws", "home", {}, None)
+    adjusting = await manual.action("bed_screws", "run", {}, None)
+    assert adjusting.state == "ADJUSTING"
+    await manual.action("bed_screws", "next", {}, None)
+    complete = await manual.action("bed_screws", "accept", {}, None)
+    assert complete.state == "COMPLETE"
+    assert manual_printer.gcodes[-3:] == ["BED_SCREWS_ADJUST", "ADJUSTED", "ACCEPT"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("wizard", "command"),
+    [("z_tilt", "Z_TILT_ADJUST"), ("quad_gantry_level", "QUAD_GANTRY_LEVEL")],
+)
+async def test_gantry_workflows_home_and_level_without_save(wizard: str, command: str):
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    await manager.start(wizard, {})
+
+    await manager.action(wizard, "home", {}, None)
+    result = await manager.action(wizard, "run", {}, None)
+
+    assert result.state == "COMPLETE"
+    assert printer.gcodes == ["G28", command]
+    assert "SAVE_CONFIG" not in printer.gcodes
+
+
+@pytest.mark.asyncio
+async def test_probe_offset_workflow_uses_manual_probe_protocol():
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    await manager.start("probe_offset", {})
+    await manager.action("probe_offset", "home", {}, None)
+
+    adjusting = await manager.action("probe_offset", "begin", {}, None)
+    assert adjusting.state == "ADJUSTING"
+    await manager.action("probe_offset", "testz", {"amount": -0.05}, None)
+    review = await manager.action("probe_offset", "accept", {}, None)
+
+    assert review.state == "REVIEW"
+    assert printer.gcodes[-3:] == ["PROBE_CALIBRATE", "TESTZ Z=-0.05", "ACCEPT"]
+
+
+@pytest.mark.asyncio
+async def test_input_shaper_checks_all_configured_sensors_before_measurement():
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    await manager.start("input_shaper", {"axis": "both"})
+
+    checked = await manager.action("input_shaper", "check", {}, None)
+    assert checked.state == "SENSOR_READY"
+    await manager.action("input_shaper", "home", {}, None)
+    measured = await manager.action("input_shaper", "run", {}, None)
+
+    assert measured.state == "REVIEW"
+    assert printer.gcodes == ["MEASURE_AXES_NOISE", "G28", "SHAPER_CALIBRATE"]
+
+
+@pytest.mark.asyncio
+async def test_pressure_advance_cancel_restores_original_runtime_settings():
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    await manager.start("pressure_advance", {"drive": "direct"})
+    await manager.action("pressure_advance", "prepare", {}, None)
+    await manager.action("pressure_advance", "calculate", {"height": 10}, None)
+    await manager.action("pressure_advance", "apply", {}, None)
+
+    cancelled = await manager.action("pressure_advance", "cancel", {}, None)
+
+    assert cancelled.state == "CANCELLED"
+    assert "SET_PRESSURE_ADVANCE EXTRUDER=extruder ADVANCE=0.000000" in printer.gcodes[-1]
+    assert "ACCEL=3000" in printer.gcodes[-1]
+
+
+@pytest.mark.asyncio
+async def test_pressure_advance_rejects_unknown_drive_type():
+    manager = CalibrationManager(MockPrinter())
+
+    with pytest.raises(WizardError, match="Direct Drive oder Bowden"):
+        await manager.start("pressure_advance", {"drive": "invalid"})
+
+
+@pytest.mark.asyncio
+async def test_flow_requires_all_four_measurements():
+    manager = CalibrationManager(MockPrinter())
+    await manager.start("flow", {})
+
+    with pytest.raises(WizardError, match="genau vier"):
+        await manager.action(
+            "flow",
+            "calculate",
+            {"expected": 0.4, "current": 100, "measurements": [0.4, 0.4, 0.4]},
+            None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_flow_calculation_remains_available_while_printer_is_offline():
+    printer = MockPrinter()
+    printer.data.connected = False
+    printer.data.state = "disconnected"
+    manager = CalibrationManager(printer)
+
+    await manager.start("flow", {})
+    result = await manager.action(
+        "flow",
+        "calculate",
+        {"expected": 0.4, "current": 100, "measurements": [0.4, 0.4, 0.4, 0.4]},
+        None,
+    )
+
+    assert result.state == "COMPLETE"
+    assert result.data["result"] == pytest.approx(100)
+
+
+@pytest.mark.asyncio
+async def test_pressure_advance_cannot_be_abandoned_during_test_print():
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    await manager.start("pressure_advance", {"drive": "direct"})
+    await manager.action("pressure_advance", "prepare", {}, None)
+    printer.data.print_state = "printing"
+
+    with pytest.raises(WizardError, match="Testdruck"):
+        await manager.action("pressure_advance", "cancel", {}, None)
+
+    assert manager.sessions["pressure_advance"].state == "PRINT_TOWER"
+
+
+@pytest.mark.asyncio
+async def test_pid_accepts_configured_secondary_extruder():
+    printer = MockPrinter()
+    printer.capability_data.heaters.append("extruder1")
+    manager = CalibrationManager(printer)
+
+    session = await manager.start("pid", {"heater": "extruder1", "target": 225})
+
+    assert session.data["heater"] == "extruder1"
+    assert session.data["target"] == 225
 
 
 def test_extruder_specific_start_route_wins_over_generic_route(tmp_path: Path):

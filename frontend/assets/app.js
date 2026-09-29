@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-25";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-26";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -128,13 +128,14 @@ function dashboard() {
   clearError();
   const ready = printerIsReady();
   const card = (wizard) => {
+    const usable = ready || wizard.id === "flow";
     const configured = wizard.configuration?.point_count ? `<span class="configured">${wizard.configuration.point_count} Punkte erkannt</span>` : "";
     const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${ready ? "" : "disabled"}>Einrichten</button>` : "";
     if (wizard.available) {
-      const interaction = ready ? `data-wizard="${wizard.id}" role="button" tabindex="0"` : "";
-      return `<div class="calibration-card ${ready ? "" : "printer-blocked"}" ${interaction}>
+      const interaction = usable ? `data-wizard="${wizard.id}" role="button" tabindex="0"` : "";
+      return `<div class="calibration-card ${usable ? "" : "printer-blocked"}" ${interaction}>
         <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
-        ${configured}<div class="card-buttons"><button class="card-start" type="button" ${ready ? "" : "disabled"}>Jetzt starten →</button>${setup}</div></div>`;
+        ${configured}<div class="card-buttons"><button class="card-start" type="button" ${usable ? "" : "disabled"}>Jetzt starten →</button>${setup}</div></div>`;
     }
     return `<div class="calibration-card unavailable">
       <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
@@ -170,7 +171,7 @@ function dashboard() {
 
 async function returnHome() {
   clearError();
-  const terminal = ["COMPLETE","CANCELLED","ERROR"].includes(session?.state);
+  const terminal = ["CANCELLED","ERROR"].includes(session?.state) || (session?.state === "COMPLETE" && !session?.save_token);
   if (activeWizard && session && !terminal) {
     if (activeWizard === "extruder") await api("wizards/extruder/cancel");
     else await calibrationAction("cancel");
@@ -390,13 +391,11 @@ function updateCalibrationStatusStrip() {
     document.querySelector("#target").textContent = Number.isFinite(session?.data?.factor) ? session.data.factor.toFixed(3) : "—";
   } else if (activeWizard === "flow") {
     statusStrip.classList.add("hidden");
-  if (id === "pid") {
     return;
-  }
   } else if (activeWizard) {
     const definition = wizards.find((item) => item.id === activeWizard);
     statusStrip.classList.remove("hidden");
-    document.querySelector("#status-label-1").textContent = "Kalibrierung";
+    document.querySelector("#status-label-1").textContent = "Aktiver Ablauf";
     document.querySelector("#status-label-2").textContent = "Referenzierte Achsen";
     document.querySelector("#temperature").textContent = definition?.name || activeWizard;
     document.querySelector("#target").textContent = printer?.homed_axes?.toUpperCase() || "keine";
@@ -499,7 +498,21 @@ function bedMeshRun() {
   genericFrame("bed_mesh", 2);
   panel.innerHTML = `<span class="kicker">Messbewegung</span><h2>Druckbett vermessen</h2><p>Klipper fährt alle in <code>[bed_mesh]</code> definierten Punkte ab. Dieser Vorgang kann mehrere Minuten dauern.</p>
     <div class="actions">${button("run", "Bed Mesh starten")}</div>`;
-  bind("run", async () => { document.querySelector("#run").innerHTML='<span class="spinner"></span>Vermessung läuft…'; await calibrationAction("run"); saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert."); });
+  bind("run", async () => { document.querySelector("#run").innerHTML='<span class="spinner"></span>Vermessung läuft…'; await calibrationAction("run"); saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert.", bedMeshSummary() + pendingCalibrationValues()); });
+}
+
+function bedMeshSummary() {
+  const result = session?.data?.result || {};
+  const matrix = Array.isArray(result.probed_matrix) ? result.probed_matrix : [];
+  const values = matrix.flat().map(Number).filter(Number.isFinite);
+  const rows = matrix.length;
+  const columns = Math.max(0, ...matrix.map(row => Array.isArray(row) ? row.length : 0));
+  const range = values.length ? Math.max(...values) - Math.min(...values) : null;
+  return `<div class="result-grid"><div class="metric"><span>Mesh-Profil</span><strong>${esc(result.profile_name || "default")}</strong></div><div class="metric"><span>Messraster</span><strong>${rows && columns ? `${columns} × ${rows}` : "—"}</strong></div><div class="metric"><span>Höhenspanne</span><strong>${Number.isFinite(range) ? `${range.toFixed(3)} mm` : "—"}</strong></div></div>`;
+}
+
+function pendingCalibrationValues() {
+  return pendingItemsMarkup(session?.data?.pending_items);
 }
 
 function screwsRun() {
@@ -527,27 +540,32 @@ function probeAdjust() {
   const controls = [-1,-.5,-.1,-.05,-.01,.01,.05,.1,.5,1].map((value) => `<button class="button secondary testz" data-z="${value}">${value > 0 ? "+" : ""}${value} mm</button>`).join("");
   panel.innerHTML = `<span class="kicker">Papier-Test</span><h2>Düse schrittweise absenken</h2><p>Bewege Z, bis sich das Papier mit leichtem Widerstand bewegen lässt. Negative Werte senken die Düse. Beginne grob und werde dann feiner.</p><div class="jog-grid">${controls}</div><div class="actions">${button("accept", "Position übernehmen")} ${button("abort", "Abbrechen", "danger ghost")}</div>`;
   document.querySelectorAll(".testz").forEach((control) => control.addEventListener("click", async () => { control.disabled=true; try { await calibrationAction("testz", {amount:Number(control.dataset.z)}); } catch(error) { showError(error.message); } finally { control.disabled=false; } }));
-  bind("accept", async () => { await calibrationAction("accept"); saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert."); });
+  bind("accept", async () => { await calibrationAction("accept"); saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert.", pendingCalibrationValues()); });
   bind("abort", async () => { await calibrationAction("abort"); dashboard(); });
 }
 
 function pidSetup() {
   genericFrame("pid", 0);
+  const heaters = wizards.find(item=>item.id==="pid")?.configuration?.heaters || ["extruder"];
+  const heaterName = value => value === "heater_bed" ? "Heizbett" : value === "extruder" ? "Hotend" : value.startsWith("extruder") ? `Hotend · ${value}` : value.replace("heater_generic ", "");
   panel.innerHTML = `<span class="kicker">Heizer wählen</span><h1>PID kalibrieren</h1><p class="lead">Wähle den Heizer und eine typische Drucktemperatur. Nach dem ersten Aufheizen schaltet Klipper den Heizer mehrfach knapp ober- und unterhalb der Zieltemperatur um.</p>
-    <label for="heater">Heizer</label><select id="heater"><option value="extruder">Hotend</option><option value="heater_bed">Heizbett</option></select>
+    <label for="heater">Heizer</label><select id="heater">${heaters.map(value=>`<option value="${esc(value)}">${esc(heaterName(value))}</option>`).join("")}</select>
     <label for="pid-target">Zieltemperatur · 5 °C Schritte</label><div class="input-row"><input id="pid-target" type="number" value="220" min="150" max="300" step="5"><span class="unit">°C</span></div><div class="actions">${button("pid-start", "PID-Tuning starten")}</div>`;
-  document.querySelector("#heater").addEventListener("change", (event) => { const bed=event.target.value==="heater_bed"; const input=document.querySelector("#pid-target"); input.value=bed?60:220; input.min=bed?30:150; input.max=bed?130:300; });
+  const updatePidRange = (value) => { const hotend=value.startsWith("extruder"); const input=document.querySelector("#pid-target"); input.value=hotend?220:60; input.min=hotend?150:30; input.max=hotend?300:130; };
+  document.querySelector("#heater").addEventListener("change", (event) => updatePidRange(event.target.value));
+  updatePidRange(document.querySelector("#heater").value);
   bind("pid-start", async () => { const heater=document.querySelector("#heater").value; const target=Number(document.querySelector("#pid-target").value); await startCalibration("pid", {heater,target}); pidReadyPage(); });
 }
 
 function pidReadyPage() {
   genericFrame("pid",1);
   panel.innerHTML=`<span class="kicker">Heizzyklen</span><h2>PID-Tuning bereit</h2>${pidSelectionSummary()}<p>Während der Messung werden hohe Temperaturen erreicht. Nach dem ersten Aufheizen folgen mehrere kurze Heiz- und Abkühlphasen um die Zieltemperatur. Lasse den Drucker nicht unbeaufsichtigt.</p><div class="actions">${button("run","Messung ausführen")}</div>`;
-  bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>PID-Tuning läuft…'; await calibrationAction("run"); saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary());});
+  bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>PID-Tuning läuft…'; await calibrationAction("run"); saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary() + pendingCalibrationValues());});
 }
 
 function pidSelectionSummary() {
-  const heater = session?.data?.heater === "heater_bed" ? "Heizbett" : "Hotend";
+  const selected = session?.data?.heater || "extruder";
+  const heater = selected === "heater_bed" ? "Heizbett" : selected === "extruder" ? "Hotend" : selected;
   const target = Number(session?.data?.target);
   return `<div class="result-grid"><div class="metric"><span>Ausgewählter Heizer</span><strong>${heater}</strong></div><div class="metric"><span>Gewählte Zieltemperatur</span><strong>${Number.isFinite(target) ? target.toFixed(0) : "—"} °C</strong></div></div>`;
 }
@@ -609,20 +627,20 @@ function shaperHome() {
 
 function shaperRun() {
   genericFrame("input_shaper",2); panel.innerHTML=`<span class="kicker">Starke Schwingungen</span><h2>Resonanzmessung starten</h2><p>Der Drucker bewegt sich schnell und laut. Stoppe ihn sofort bei lockeren Teilen, Zug am Sensorkabel oder ungewöhnlichen Geräuschen.</p><label><input id="vibration-confirm" type="checkbox" style="width:auto"> Sensor und Kabel sind sicher befestigt, der Bauraum ist frei.</label><div class="actions">${button("run","SHAPER_CALIBRATE starten")}</div>`;
-  bind("run",async()=>{if(!document.querySelector("#vibration-confirm").checked)throw new Error("Bestätige zuerst die sichere Vorbereitung."); document.querySelector("#run").innerHTML='<span class="spinner"></span>Messung läuft…'; await calibrationAction("run"); saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.");});
+  bind("run",async()=>{if(!document.querySelector("#vibration-confirm").checked)throw new Error("Bestätige zuerst die sichere Vorbereitung."); document.querySelector("#run").innerHTML='<span class="spinner"></span>Messung läuft…'; await calibrationAction("run"); saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.", pendingCalibrationValues());});
 }
 
 function saveKlipperPage(title, copy, selection = "") {
   genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">Dauerhafte Änderung</span><h2>${title} speichern</h2><p>${copy}</p>${selection}<label><input id="confirm-save" type="checkbox" style="width:auto"> Ich möchte genau die Ergebnisse dieser Kalibrierung mit SAVE_CONFIG speichern und Klipper neu starten.</label><div class="actions">${button("save-config","SAVE_CONFIG ausführen")}</div>`;
-  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die dauerhafte Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title);});
+  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die dauerhafte Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title, true);});
 }
 
 function saveLocalPage(title, copy) {
   genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">Dauerhafte Änderung</span><h2>${title} speichern</h2><p>${copy}</p><label><input id="confirm-save" type="checkbox" style="width:auto"> Konfigurationsdatei mit Backup ändern.</label><div class="actions">${button("save-config","In Konfiguration speichern")}</div>`;
-  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title);});
+  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title, true);});
 }
 
-function completePage(title) { panel.innerHTML=`<span class="kicker">Abgeschlossen</span><h2>${title} gespeichert</h2><p>Die Kalibrierung ist abgeschlossen.</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`; bind("dashboard",dashboard); }
+function completePage(title, saved = false) { panel.innerHTML=`<span class="kicker">Abgeschlossen</span><h2>${title} ${saved ? "gespeichert" : "abgeschlossen"}</h2><p>${saved ? "Die Kalibrierungswerte wurden dauerhaft übernommen." : "Die Kalibrierung ist abgeschlossen; es war keine Konfigurationsänderung erforderlich."}</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`; bind("dashboard",dashboard); }
 
 function heat() {
   setProgress(1);
@@ -725,7 +743,7 @@ function resumedRunningPage(id, title = "Kalibrierung läuft") {
     setProgress(session.state === "VERIFYING" ? 6 : 3);
   } else {
     const steps = {pid:1, bed_mesh:2, screws_tilt:1, z_tilt:2, quad_gantry_level:2, input_shaper:2};
-    genericFrame(id, steps[id] ?? 1);
+    genericFrame(id, session.state === "HOMING" ? 1 : (steps[id] ?? 1));
   }
   const selection = id === "pid" ? pidSelectionSummary() : "";
   panel.innerHTML=`<span class="kicker">Laufende Kalibrierung</span><h2>${title}</h2>${selection}<p>Der Drucker führt den laufenden Schritt weiter aus. Diese Ansicht wechselt automatisch zum nächsten Schritt, sobald Klipper fertig ist.</p><div class="running-state"><span class="spinner"></span><strong>Bitte warten…</strong></div>`;
@@ -750,7 +768,7 @@ function renderResumedExtruder() {
     case "VERIFYING": resumedRunningPage("extruder", "Prüfextrusion läuft"); break;
     case "COMPLETE":
       if (session.verification_result && session.save_token) result(true);
-      else { setSteps("Extruder kalibrieren", t("steps")); setProgress(7); completePage("Extruder-Kalibrierung"); }
+      else { setSteps("Extruder kalibrieren", t("steps")); setProgress(7); completePage("Extruder-Kalibrierung", true); }
       break;
     case "ERROR": resumedErrorPage("extruder"); break;
     default: dashboard();
@@ -760,19 +778,21 @@ function renderResumedExtruder() {
 function renderResumedGeneric(id) {
   const state = session.state;
   if (state === "ERROR") return resumedErrorPage(id);
+  if (state === "HOMING") return resumedRunningPage(id, "Referenzierung läuft");
   if (state === "RUNNING") return resumedRunningPage(id);
   if (state === "COMPLETE") {
     if (id === "flow" && Number.isFinite(session.data?.result)) return flowResultPage();
-    genericFrame(id, (genericSteps[id]?.length || 1) - 1); return completePage(wizards.find(item=>item.id===id)?.name || "Kalibrierung");
+    const saved = new Set(["pid", "bed_mesh", "probe_offset", "input_shaper", "pressure_advance"]).has(id);
+    genericFrame(id, (genericSteps[id]?.length || 1) - 1); return completePage(wizards.find(item=>item.id===id)?.name || "Kalibrierung", saved);
   }
   if (id === "pid") {
     if (state === "READY") return pidReadyPage();
-    if (state === "REVIEW") return saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary());
+    if (state === "REVIEW") return saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary() + pendingCalibrationValues());
   }
   if (id === "bed_mesh") {
     if (state === "READY") return homingPage(id);
     if (state === "HOMED") return bedMeshRun();
-    if (state === "REVIEW") return saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert.");
+    if (state === "REVIEW") return saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert.", bedMeshSummary() + pendingCalibrationValues());
   }
   if (id === "screws_tilt") {
     if (state === "READY") return homingPage(id);
@@ -788,7 +808,7 @@ function renderResumedGeneric(id) {
     if (state === "READY") return homingPage(id);
     if (state === "HOMED") return probeRun();
     if (state === "ADJUSTING") return probeAdjust();
-    if (state === "REVIEW") return saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert.");
+    if (state === "REVIEW") return saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert.", pendingCalibrationValues());
   }
   if (id === "z_tilt" || id === "quad_gantry_level") {
     if (state === "READY") return homingPage(id);
@@ -801,10 +821,11 @@ function renderResumedGeneric(id) {
     if (state === "APPLIED") return saveLocalPage("Pressure Advance",`Neuer Wert: ${session.data.value.toFixed(6)}`);
   }
   if (id === "input_shaper") {
-    if (state === "READY") return resumedRunningPage(id, "Beschleunigungssensor wird geprüft");
+    if (state === "READY") return shaperSetup();
+    if (state === "CHECKING") return resumedRunningPage(id, "Beschleunigungssensor wird geprüft");
     if (state === "SENSOR_READY") return shaperHome();
     if (state === "HOMED") return shaperRun();
-    if (state === "REVIEW") return saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.");
+    if (state === "REVIEW") return saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.", pendingCalibrationValues());
   }
   if (id === "flow" && state === "READY") return flowSetup();
   dashboard();
@@ -838,21 +859,7 @@ function updateStatus(data) {
   printer = data.printer;
   if (activeWizard === "extruder" && data.session) session = data.session;
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
-  if (activeWizard === "pid") {
-    document.querySelector("#status-label-1").textContent = "Hotend";
-    document.querySelector("#status-label-2").textContent = "Heizbett";
-    document.querySelector("#temperature").textContent = `${printer.temperature.toFixed(1)} °C`;
-    document.querySelector("#target").textContent = `${printer.bed_temperature.toFixed(1)} °C`;
-  } else if (!activeWizard || activeWizard === "extruder") {
-    document.querySelector("#status-label-1").textContent = "Hotend";
-    document.querySelector("#status-label-2").textContent = "Ziel";
-    document.querySelector("#temperature").textContent = `${printer.temperature.toFixed(1)} °C`;
-    document.querySelector("#target").textContent = `${printer.target.toFixed(1)} °C`;
-  } else {
-    document.querySelector("#temperature").textContent = printer.print_state || "—";
-    document.querySelector("#target").textContent = printer.homed_axes?.toUpperCase() || "nicht referenziert";
-  }
-  document.querySelector("#klipper-state").textContent = printer.state;
+  updateCalibrationStatusStrip();
   connection.className = `connection ${printer.connected ? "online" : "offline"}`;
   document.querySelector("#connection").textContent = printer.connected ? "Printer connected" : "Printer offline";
   if (!bootstrapping && pendingResolution() && continueAfterPendingResolution()) return;

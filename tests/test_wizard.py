@@ -99,3 +99,28 @@ async def test_implausible_result_cannot_be_applied():
 
     with pytest.raises(WizardError, match="Plausibility"):
         await wizard.apply()
+
+
+@pytest.mark.asyncio
+async def test_cancel_after_temporary_apply_restores_original_rotation_distance():
+    wizard, printer = await heated_wizard()
+    original = printer.data.rotation_distance
+    await wizard.extrude()
+    await wizard.measurement(24)
+    await wizard.apply()
+    assert printer.data.rotation_distance != original
+
+    await wizard.cancel()
+
+    assert printer.data.rotation_distance == original
+    assert wizard.session.state == WizardState.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_extruder_calibration_is_blocked_during_print():
+    printer = MockPrinter()
+    printer.data.print_state = "printing"
+    wizard = ExtruderWizard(printer)
+
+    with pytest.raises(WizardError, match="blocked while a print"):
+        await wizard.start(120, 100)

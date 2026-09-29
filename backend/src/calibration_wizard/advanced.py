@@ -73,6 +73,8 @@ class CalibrationManager:
                 },
                 "configuration": self._configuration_summary(definition.id, settings),
             }
+            if definition.id == "pid":
+                data["configuration"]["heaters"] = caps.heaters
             result.append(data)
         return result
 
@@ -126,9 +128,13 @@ class CalibrationManager:
     async def _start(self, wizard: str, options: dict[str, Any]) -> CalibrationSession:
         if wizard not in CAPABILITY_REQUIREMENTS:
             raise WizardError("Unbekannte Kalibrierung")
-        snapshot = await self._safe(
-            wizard, require_clean=wizard in {"pid", "bed_mesh", "probe_offset", "input_shaper"}
-        )
+        if wizard == "flow":
+            snapshot = await self.printer.snapshot()
+        else:
+            snapshot = await self._safe(
+                wizard,
+                require_clean=wizard in {"pid", "bed_mesh", "probe_offset", "input_shaper"},
+            )
         data: dict[str, Any] = dict(options)
         if wizard == "pid":
             caps = await self.printer.capabilities()
@@ -136,8 +142,9 @@ class CalibrationManager:
             if heater not in caps.heaters:
                 raise WizardError("Der gewählte Heizer ist nicht konfiguriert")
             target = self._number(options.get("target", 220 if heater == "extruder" else 60))
-            maximum = 300 if heater == "extruder" else 130
-            minimum = 150 if heater == "extruder" else 30
+            is_extruder = heater.startswith("extruder")
+            maximum = 300 if is_extruder else 130
+            minimum = 150 if is_extruder else 30
             if target < minimum or target > maximum or target % 5:
                 raise WizardError(
                     f"Zieltemperatur muss in 5-°C-Schritten zwischen {minimum} und {maximum} liegen"
@@ -239,6 +246,12 @@ class CalibrationManager:
             "CALCULATED",
             "APPLIED",
         }:
+            snapshot = await self.printer.snapshot()
+            if snapshot.print_state in {"printing", "paused"}:
+                raise WizardError(
+                    "Beende oder brich den Testdruck in Mainsail ab, bevor du die "
+                    "Pressure-Advance-Kalibrierung verlässt."
+                )
             await self._restore_pressure_advance_test(session)
         if session.wizard in {"probe_offset", "bed_screws"} and session.state == "ADJUSTING":
             await self.printer.run_gcode("ABORT")
@@ -255,6 +268,8 @@ class CalibrationManager:
                 f"TARGET={session.data['target']:.0f}",
                 long_running=True,
             )
+            snapshot = await self.printer.snapshot()
+            session.data["pending_items"] = snapshot.save_config_pending_items
             session.state = "REVIEW"
             session.save_token = secrets.token_urlsafe(24)
         elif action == "save":
@@ -275,6 +290,8 @@ class CalibrationManager:
                 {"bed_mesh": ["profile_name", "probed_matrix", "mesh_min", "mesh_max"]}
             )
             session.data["result"] = status.get("bed_mesh", {})
+            snapshot = await self.printer.snapshot()
+            session.data["pending_items"] = snapshot.save_config_pending_items
             session.state = "REVIEW"
             session.save_token = secrets.token_urlsafe(24)
         elif action == "save":
@@ -355,6 +372,8 @@ class CalibrationManager:
         elif action == "accept":
             self._require_state(session, "ADJUSTING")
             await self.printer.run_gcode("ACCEPT")
+            snapshot = await self.printer.snapshot()
+            session.data["pending_items"] = snapshot.save_config_pending_items
             session.state = "REVIEW"
             session.save_token = secrets.token_urlsafe(24)
         elif action == "abort":
@@ -399,8 +418,7 @@ class CalibrationManager:
             value = self._number(session.data.get("value"))
             await self.printer.run_gcode(
                 f"SET_PRESSURE_ADVANCE EXTRUDER={session.data['extruder']} "
-                f"ADVANCE={value:.6f}\n"
-                + self._velocity_restore_command(session)
+                f"ADVANCE={value:.6f}\n" + self._velocity_restore_command(session)
             )
             session.state = "APPLIED"
             session.save_token = secrets.token_urlsafe(24)
@@ -419,11 +437,6 @@ class CalibrationManager:
             session.state = "COMPLETE"
         else:
             raise WizardError("Diese Pressure-Advance-Aktion ist nicht erlaubt")
-
-    async def _restore_velocity_limits(self, session: CalibrationSession) -> None:
-        command = self._velocity_restore_command(session)
-        if command:
-            await self.printer.run_gcode(command)
 
     async def _restore_pressure_advance_test(self, session: CalibrationSession) -> None:
         original = self._number(session.data.get("original_pressure_advance", 0.0))
@@ -470,6 +483,7 @@ class CalibrationManager:
         if action == "check":
             self._require_state(session, "READY")
             await self._safe("input_shaper", require_clean=True)
+            session.state = "CHECKING"
             await self.printer.run_gcode("MEASURE_AXES_NOISE")
             session.state = "SENSOR_READY"
         elif action == "run":
@@ -483,6 +497,8 @@ class CalibrationManager:
             )
             session.state = "RUNNING"
             await self.printer.run_gcode(command, long_running=True)
+            snapshot = await self.printer.snapshot()
+            session.data["pending_items"] = snapshot.save_config_pending_items
             session.state = "REVIEW"
             session.save_token = secrets.token_urlsafe(24)
         elif action == "save":

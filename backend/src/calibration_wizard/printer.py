@@ -175,7 +175,9 @@ class MoonrakerPrinter(PrinterAdapter):
         command_map = help_result.get("gcode_commands", help_result)
         commands = sorted(str(item).upper() for item in command_map)
         settings = config_result.get("status", {}).get("configfile", {}).get("settings", {})
-        heaters = [name for name in ("extruder", "heater_bed") if name in settings]
+        heaters = sorted(name for name in settings if name.startswith("extruder"))
+        if "heater_bed" in settings:
+            heaters.append("heater_bed")
         heaters.extend(sorted(name for name in settings if name.startswith("heater_generic ")))
         return PrinterCapabilities(
             commands=commands,
@@ -323,9 +325,7 @@ class MockPrinter(PrinterAdapter):
         if "toolhead" in objects:
             result["toolhead"] = {"max_accel": 3000.0, "square_corner_velocity": 5.0}
         if "configfile" in objects:
-            result["configfile"] = {
-                "settings": {"extruder": {"pressure_advance": 0.0}}
-            }
+            result["configfile"] = {"settings": {"extruder": {"pressure_advance": 0.0}}}
         return result
 
     async def capabilities(self) -> PrinterCapabilities:
