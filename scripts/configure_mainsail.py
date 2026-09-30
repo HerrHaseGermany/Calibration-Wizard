@@ -39,7 +39,7 @@ def write_navigation(path: Path, navigation: list[dict[str, Any]]) -> Path | Non
     if path.exists():
         mode = path.stat().st_mode & 0o777
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        backup = path.with_name(f"{path.name}.kcw-backup-{stamp}")
+        backup = path.with_name(f".{path.name}.kcw-backup-{stamp}")
         backup.write_bytes(path.read_bytes())
         os.chmod(backup, mode)
 

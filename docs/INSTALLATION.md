@@ -48,6 +48,8 @@ git pull --ff-only
 
 Backups are stored below `~/printer_data/backups/klipper-calibration-wizard/<UTC timestamp>/` with the same relative path as the source config. Stop printing, compare the backup and live file, copy the desired backup over its matching source file, then run `RESTART` from the printer UI. Never restore a whole directory blindly.
 
+Installer backups of existing Moonraker, update-manager, nginx, or Mainsail navigation files use a leading dot (for example `.moonraker.conf.kcw-backup-<timestamp>`). Mainsail hides these safety copies by default; enable its “show hidden files” option when a manual restore is required.
+
 ## Uninstall
 
 ```bash

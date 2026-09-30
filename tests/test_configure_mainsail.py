@@ -29,7 +29,9 @@ def test_installs_sidebar_entry_and_preserves_existing_items(tmp_path: Path):
     values = json.loads(navigation.read_text(encoding="utf-8"))
     assert values[0] == existing[0]
     assert values[1]["href"] == "/calibration/"
-    assert Path(result.stdout.strip()).exists()
+    backup = Path(result.stdout.strip())
+    assert backup.exists()
+    assert backup.name.startswith(".navi.json.kcw-backup-")
 
 
 def test_install_is_idempotent(tmp_path: Path):
@@ -41,7 +43,7 @@ def test_install_is_idempotent(tmp_path: Path):
 
     assert navigation.read_bytes() == original
     assert result.stdout == "\n"
-    assert len(list(tmp_path.glob("navi.json.kcw-backup-*"))) == 0
+    assert len(list(tmp_path.glob(".navi.json.kcw-backup-*"))) == 0
 
 
 def test_updates_an_existing_calibration_entry(tmp_path: Path):

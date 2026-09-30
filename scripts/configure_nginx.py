@@ -43,7 +43,7 @@ def main() -> int:
     if updated == original:
         return 0
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = args.target.with_name(f"{args.target.name}.kcw-backup-{stamp}")
+    backup = args.target.with_name(f".{args.target.name}.kcw-backup-{stamp}")
     shutil.copy2(args.target, backup)
     args.target.write_text(updated, encoding="utf-8")
     print(backup)

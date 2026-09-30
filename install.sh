@@ -52,9 +52,10 @@ fail() { printf '[calibration-wizard] ERROR: %s\n' "$*" >&2; exit 1; }
 backup_file() {
   local source="$1"
   if [[ -f "${source}" ]]; then
-    local stamp
+    local stamp backup
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-    cp -a "${source}" "${source}.kcw-backup-${stamp}"
+    backup="$(dirname "${source}")/.$(basename "${source}").kcw-backup-${stamp}"
+    cp -a "${source}" "${backup}"
   fi
 }
 render() {
