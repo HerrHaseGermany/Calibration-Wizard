@@ -12,6 +12,11 @@ export const messages = {
 };
 
 const pairs = [
+  ["Hinten · Y+", "Rear · Y+"], ["Vorne · Y−", "Front · Y−"],
+  ["Positionen – Draufsicht", "Positions – top view"],
+  ["Draufsicht · links X− / rechts X+ · schematisch", "Top view · left X− / right X+ · schematic"],
+  ["Im Uhrzeigersinn", "Clockwise"], ["Gegen den Uhrzeigersinn", "Counterclockwise"],
+  ["Klipper meldet keine Schraubenergebnisse.", "Klipper reports no screw results."],
   ["Aktiven Extruder vermessen und seine Rotationsdistanz kalibrieren.", "Measure the active extruder and calibrate its rotation distance."],
   ["Hotend oder Heizbett auf eine stabile Zieltemperatur abstimmen.", "Tune the hotend or heated bed for a stable target temperature."],
   ["Wandstärken messen und den Extrusionsfaktor für den Slicer berechnen.", "Measure wall thickness and calculate the slicer extrusion multiplier."],

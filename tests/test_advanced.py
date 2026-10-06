@@ -134,6 +134,42 @@ async def test_screw_workflows_follow_their_interactive_protocols():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("wizard", ["screws_tilt", "bed_screws", "z_tilt", "quad_gantry_level"])
+async def test_position_geometry_is_available_in_calibration_session(wizard: str):
+    class GeometryPrinter(MockPrinter):
+        async def query_objects(self, objects):
+            result = await super().query_objects(objects)
+            if "configfile" in objects:
+                screws = {
+                    f"screw{i + 1}": [x, y]
+                    for i, (x, y) in enumerate(
+                        [(0, 0), (200, 0), (200, 100), (0, 100), (0, 200), (200, 200)]
+                    )
+                }
+                screws["screw1_name"] = "Vorne links"
+                result["configfile"]["settings"].update({
+                    "screws_tilt_adjust": screws, "bed_screws": screws,
+                    "z_tilt": {"z_positions": [[-20, 0], [220, 0], [100, 250]]},
+                    "quad_gantry_level": {"points": "0, 0\n0, 200\n200, 200\n200, 0"},
+                })
+            return result
+
+    session = await CalibrationManager(GeometryPrinter()).start(wizard, {})
+    positions = session.data["positions"]
+    if wizard in {"screws_tilt", "bed_screws"}:
+        assert len(positions) == 6
+        assert positions[0] == {"id": "screw1", "name": "Vorne links", "x": 0, "y": 0}
+        assert positions[4]["y"] == 200
+    elif wizard == "z_tilt":
+        assert len(positions) == 3
+        assert positions[0]["x"] == -20
+        assert positions[2]["name"] == "Z2"
+    else:
+        assert len(positions) == 4
+        assert positions[2]["x"] == positions[2]["y"] == 200
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("wizard", "command"),
     [("z_tilt", "Z_TILT_ADJUST"), ("quad_gantry_level", "QUAD_GANTRY_LEVEL")],

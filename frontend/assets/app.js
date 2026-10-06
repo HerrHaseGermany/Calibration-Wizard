@@ -1,4 +1,5 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20260929-26";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261006-1";
+import { adjustment, positionMap } from "./positions.mjs?v=20261006-1";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -440,12 +441,14 @@ function bedScrewsRun() {
 
 function bedScrewsAdjust() {
   genericFrame("bed_screws",2); panel.innerHTML=`<span class="kicker">Schraube einstellen</span><h2>Papierwiderstand angleichen</h2><p>Drehe nur die aktuell angefahrene Schraube. Klicke danach auf „Nächste Schraube“. Klipper wiederholt den Rundgang, bis du das Ergebnis akzeptierst.</p><div class="actions">${button("next","Nächste Schraube")} ${button("accept","Ausrichtung akzeptieren","secondary")} ${button("abort","Abbrechen","danger ghost")}</div>`;
+  panel.querySelector(".actions").insertAdjacentHTML("beforebegin",positionMap(session.data.positions || []));
   bind("next",async()=>{await calibrationAction("next"); document.querySelector("#next").disabled=false;}); bind("accept",async()=>{await calibrationAction("accept");completePage("Manuelle Bettschrauben");}); bind("abort",async()=>{await calibrationAction("abort");dashboard();});
 }
 
 function gantryRun(id) {
   genericFrame(id,2); const command=id === "z_tilt" ? "Z_TILT_ADJUST" : "QUAD_GANTRY_LEVEL";
   panel.innerHTML=`<span class="kicker">Automatische Ausrichtung</span><h2>${command}</h2><p>Klipper fährt alle konfigurierten Messpunkte ab und korrigiert die unabhängigen Z-Antriebe iterativ.</p><div class="actions">${button("run",`${command} starten`)}</div>`;
+  panel.querySelector(".actions").insertAdjacentHTML("beforebegin",positionMap(session.data.positions || []));
   bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>Ausrichtung läuft…'; await calibrationAction("run"); completePage(id === "z_tilt" ? "Z-Tilt" : "Quad Gantry Level");});
 }
 
@@ -524,8 +527,12 @@ function screwsRun() {
 function screwsResult() {
   genericFrame("screws_tilt", 2);
   const result = session.data.result || {}; const entries = Object.entries(result.results || {});
-  const rows = entries.length ? entries.map(([name, item]) => `<div class="metric"><span>${name}</span><strong>${item.is_base ? "Referenz" : `${item.sign || ""} ${item.adjust || "—"}`}</strong></div>`).join("") : '<p>Klipper meldet keine Korrekturen – das Bett ist bereits ausgerichtet.</p>';
-  panel.innerHTML = `<span class="kicker">Ergebnis</span><h2>Schrauben einstellen</h2><div class="result-grid">${rows}</div><p>Stelle die Schrauben bei stillstehendem Drucker ein und wiederhole danach die Messung. Eine mechanische Änderung kann eine erneute Z‑Offset-Kalibrierung erfordern.</p><div class="actions">${button("again", "Erneut messen")} ${button("done", "Fertig", "secondary")}</div>`;
+  const positions = session.data.positions || [];
+  const positioned = positions.filter(point => Object.hasOwn(result.results || {}, point.id));
+  const unmatched = entries.filter(([id]) => !positioned.some(point => point.id === id));
+  const rows = unmatched.map(([name, item]) => `<div class="metric"><span>${esc(name)}</span>${adjustment(item)}</div>`).join("");
+  const layout = positionMap(positioned, result.results) + (rows ? `<div class="result-grid">${rows}</div>` : "");
+  panel.innerHTML = `<span class="kicker">Ergebnis</span><h2>Schrauben einstellen</h2>${layout || '<p>Klipper meldet keine Schraubenergebnisse.</p>'}<p>Stelle die Schrauben bei stillstehendem Drucker ein und wiederhole danach die Messung. Eine mechanische Änderung kann eine erneute Z‑Offset-Kalibrierung erfordern.</p><div class="actions">${button("again", "Erneut messen")} ${button("done", "Fertig", "secondary")}</div>`;
   bind("again", screwsRun); bind("done", dashboard);
 }
 

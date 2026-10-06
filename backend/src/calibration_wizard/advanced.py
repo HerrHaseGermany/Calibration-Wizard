@@ -98,6 +98,39 @@ class CalibrationManager:
         points = section.get("points") or section.get("probe_count") or []
         return {"points": points}
 
+    @staticmethod
+    def _position_layout(wizard: str, settings: dict[str, Any]) -> list[dict[str, Any]]:
+        section_name = {
+            "screws_tilt": "screws_tilt_adjust", "bed_screws": "bed_screws",
+            "z_tilt": "z_tilt", "quad_gantry_level": "quad_gantry_level",
+        }[wizard]
+        section = settings.get(section_name, {})
+        if wizard in {"screws_tilt", "bed_screws"}:
+            keys = sorted(
+                (key for key in section if key.startswith("screw") and key[5:].isdigit()),
+                key=lambda key: int(key[5:]),
+            )
+            raw = [(key, section.get(f"{key}_name", key), section[key]) for key in keys]
+        else:
+            # Z motor positions may be outside the bed; keep their configured geometry.
+            points = section.get("z_positions" if wizard == "z_tilt" else "points", [])
+            if isinstance(points, str):
+                points = points.strip().splitlines()
+            raw = [
+                (f"point{index + 1}", f"Z{index}" if wizard == "z_tilt" else str(index + 1), xy)
+                for index, xy in enumerate(points)
+            ]
+        result = []
+        for key, name, xy in raw:
+            try:
+                values = xy.split(",") if isinstance(xy, str) else xy
+                x, y = float(values[0]), float(values[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if math.isfinite(x) and math.isfinite(y):
+                result.append({"id": key, "name": name, "x": x, "y": y})
+        return result
+
     async def _safe(self, wizard: str, *, require_clean: bool = False) -> PrinterSnapshot:
         snapshot = await self.printer.snapshot()
         if not snapshot.connected or snapshot.state != "ready":
@@ -182,6 +215,11 @@ class CalibrationManager:
             data = {"axis": axis}
         elif wizard == "flow":
             data = {}
+        if wizard in {"screws_tilt", "bed_screws", "z_tilt", "quad_gantry_level"}:
+            status = await self.printer.query_objects({"configfile": ["settings"]})
+            data["positions"] = self._position_layout(
+                wizard, status.get("configfile", {}).get("settings", {})
+            )
         data["printer"] = snapshot.model_dump(mode="json")
         session = CalibrationSession(
             id=secrets.token_urlsafe(16), wizard=wizard, state="READY", data=data

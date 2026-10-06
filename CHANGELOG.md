@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+- Arrange screw adjustment results by configured X/Y positions, with screw names and clockwise/counterclockwise arrows.
+- Add schematic position views for manual bed screws and Z/quad gantry leveling, including six-screw and three-point layouts.
+- Add regression coverage for position geometry, result matching, and rotation directions.
+
 ## 0.1.1
 
 - Ensure rerunning the installer restarts an already active Wizard service so newly installed code is loaded immediately.
