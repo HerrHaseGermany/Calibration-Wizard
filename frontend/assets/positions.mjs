@@ -27,6 +27,6 @@ export function positionMap(points, results = null) {
     if (!cells.has(key)) cells.set(key, []);
     cells.get(key).push(point);
   }
-  const cards = [...cells.values()].map(group => `<div class="position-cell" style="grid-column:${group[0].column};grid-row:${group[0].row}">${group.map(point => `<div class="metric position-card"><span>${esc(point.name)}</span>${results ? adjustment(results[point.id]) : ""}<small>X ${esc(point.x)} · Y ${esc(point.y)}</small></div>`).join("")}</div>`).join("");
+  const cards = [...cells.values()].map(group => `<div class="position-cell" style="grid-column:${group[0].column};grid-row:${group[0].row}">${group.map(point => `<div class="metric position-card"><span data-no-i18n>${esc(point.name)}</span>${results ? adjustment(results[point.id]) : ""}<small>X ${esc(point.x)} · Y ${esc(point.y)}</small></div>`).join("")}</div>`).join("");
   return `<section class="position-view" aria-label="Positionen – Draufsicht"><div class="position-edge">Hinten · Y+</div><div class="position-scroll"><div class="position-map" style="grid-template-columns:repeat(${grid.columns},minmax(130px,1fr));grid-template-rows:repeat(${grid.rows},auto)">${cards}</div></div><div class="position-edge">Vorne · Y−</div><p class="position-caption">Draufsicht · links X− / rechts X+ · schematisch</p></section>`;
 }

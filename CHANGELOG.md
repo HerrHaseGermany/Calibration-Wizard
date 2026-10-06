@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+
+- Complete German and English translations for calibration instructions, status displays, setup fields, confirmations, errors, and warnings.
+- Preserve original text across repeated language changes and avoid replacing parts of words or Klipper identifiers.
+- Translate live text updates and accessibility attributes, and retain setup inputs when switching languages.
+- Add localization regression tests.
+
 ## 0.1.2
 
 - Arrange screw adjustment results by configured X/Y positions, with screw names and clockwise/counterclockwise arrows.

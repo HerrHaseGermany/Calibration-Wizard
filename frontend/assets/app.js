@@ -1,5 +1,5 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261006-1";
-import { adjustment, positionMap } from "./positions.mjs?v=20261006-1";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261006-2";
+import { adjustment, positionMap } from "./positions.mjs?v=20261006-2";
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -55,7 +55,7 @@ function printerReadinessNotice() {
     startup: "Klipper startet gerade. Die Kalibrierungen werden automatisch freigegeben, sobald die Firmware bereit ist.",
     disconnected: "Der Calibration Wizard kann Klipper derzeit nicht erreichen. Prüfe die Verbindung und den Zustand in Mainsail.",
   }[state] || `Klipper ist momentan nicht bereit (Zustand: ${esc(state)}). Prüfe den Drucker in Mainsail.`;
-  const detail = printer?.state_message ? `<p class="printer-state-message">${esc(printer.state_message)}</p>` : "";
+  const detail = printer?.state_message ? `<p class="printer-state-message" data-no-i18n>${esc(printer.state_message)}</p>` : "";
   return `<aside class="printer-readiness" role="alert"><div><strong>Klipper ist nicht bereit</strong><p>${copy}</p>${detail}</div><a class="button secondary" href="/">Zu Mainsail</a></aside>`;
 }
 
@@ -69,9 +69,19 @@ function setOverviewState(current) {
 const language = document.querySelector("#language");
 language.value = getLocale();
 setLocale(getLocale());
-const localizationObserver = new MutationObserver((records) => records.forEach((record) => record.addedNodes.forEach((node) => { if (node.nodeType === Node.ELEMENT_NODE) localize(node); else if (node.parentElement) localize(node.parentElement); })));
-localizationObserver.observe(document.body, {childList:true,subtree:true});
-language.addEventListener("change",()=>{setLocale(language.value); localize(document.body); if(!activeWizard) dashboard();});
+const localizationObserver = new MutationObserver(records => {
+  const roots = new Set();
+  for (const record of records) {
+    if (record.type === "childList") record.addedNodes.forEach(node => roots.add(node));
+    else roots.add(record.target);
+  }
+  roots.forEach(root => localize(root));
+});
+localizationObserver.observe(document.body, {
+  childList: true, subtree: true, characterData: true,
+  attributes: true, attributeFilter: ["placeholder", "aria-label", "title"],
+});
+language.addEventListener("change",()=>{setLocale(language.value); localize(document.body);});
 localize(document.body);
 
 const themeButton = document.querySelector("#theme-button");
@@ -486,7 +496,8 @@ function renderSetup(id, setup) {
   if(schema.kind === "mesh") { const min=pair(current.mesh_min); const max=pair(current.mesh_max); const count=pair(current.probe_count,[5,5]); fields=`<div class="setup-grid"><label>Mesh-Minimum X<input id="min-x" type="number" step="0.1" value="${esc(min[0])}"></label><label>Mesh-Minimum Y<input id="min-y" type="number" step="0.1" value="${esc(min[1])}"></label><label>Mesh-Maximum X<input id="max-x" type="number" step="0.1" value="${esc(max[0])}"></label><label>Mesh-Maximum Y<input id="max-y" type="number" step="0.1" value="${esc(max[1])}"></label><label>Messpunkte X<input id="count-x" type="number" min="2" max="50" value="${esc(count[0])}"></label><label>Messpunkte Y<input id="count-y" type="number" min="2" max="50" value="${esc(count[1])}"></label></div>`; }
   else { let groups=[]; if(schema.kind === "dual_points") groups=[{key:"z_positions",title:"Positionen der Z-Antriebe",points:(Array.isArray(current.z_positions)?current.z_positions:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:"Probe-Messpunkte",points:existingPoints(current,schema.kind)}]; else if(schema.kind === "quad_gantry") groups=[{key:"gantry_corners",title:"Gantry-Ecken (2 Punkte)",points:(Array.isArray(current.gantry_corners)?current.gantry_corners:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:"Probe-Messpunkte (4 Punkte)",points:existingPoints(current,schema.kind)}]; else groups=[{key:"points",title:"Schraubenpositionen",points:existingPoints(current,schema.kind),named:true}]; fields=groups.map(group=>`<section class="point-group" data-key="${group.key}" data-named="${group.named ? "true":"false"}"><div class="group-heading"><h3>${group.title}</h3><button class="add-point button secondary" type="button">Punkt hinzufügen</button></div><div class="point-list">${pointRows(group.points.length?group.points:[{},{},{},{}],group.named)}</div></section>`).join(""); }
   const thread=schema.fields.includes("screw_thread") ? `<label>Schraubengewinde<select id="screw-thread">${["CW-M3","CW-M4","CW-M5","CCW-M3","CCW-M4","CCW-M5"].map(value=>`<option ${current.screw_thread===value?"selected":""}>${value}</option>`).join("")}</select></label>`:"";
-  const advanced=["speed","horizontal_move_z","probe_height","retries","retry_tolerance","max_adjust"].filter(key=>schema.fields.includes(key)).map(key=>`<label>${key}<input id="setup-${key}" type="number" step="0.01" value="${esc(current[key])}"></label>`).join("");
+  const setupLabels = {speed:"Bewegungsgeschwindigkeit", horizontal_move_z:"Z-Höhe beim Verfahren", probe_height:"Papier-Test-Höhe", retries:"Wiederholungen", retry_tolerance:"Wiederholungstoleranz", max_adjust:"Maximale Korrektur"};
+  const advanced=["speed","horizontal_move_z","probe_height","retries","retry_tolerance","max_adjust"].filter(key=>schema.fields.includes(key)).map(key=>`<label>${setupLabels[key]}<input id="setup-${key}" type="number" step="0.01" value="${esc(current[key])}"></label>`).join("");
   panel.innerHTML=`<span class="kicker">Kalibrierung einrichten</span><h1>${wizards.find(w=>w.id===id)?.name || id}</h1><p class="lead">Lege die Geometrie für diesen Drucker fest. Zulässiger Verfahrbereich laut Klipper: <strong>${boundsText}</strong>.</p><p class="safety-note">Koordinaten müssen zur Mechanik, zum Probe-Offset und zu einem freien Verfahrweg passen. Falsche Werte können eine Kollision verursachen.</p>${fields}<div class="setup-grid advanced-fields">${thread}${advanced}</div><div class="actions">${button("preview-setup","Änderungen prüfen")} ${button("back","Zurück","secondary")}</div>`;
   document.querySelectorAll(".add-point").forEach(control=>control.addEventListener("click",()=>{const group=control.closest(".point-group"); group.querySelector(".point-list").insertAdjacentHTML("beforeend",pointRows([{}],group.dataset.named==="true")); bindPointRemovers();})); bindPointRemovers(); bind("back",dashboard); bind("preview-setup",async()=>{const values=collectSetup(schema); const response=await api(`setup/${id}/preview`,{values}); renderSetupPreview(id,values,response);});
 }
@@ -511,7 +522,7 @@ function bedMeshSummary() {
   const rows = matrix.length;
   const columns = Math.max(0, ...matrix.map(row => Array.isArray(row) ? row.length : 0));
   const range = values.length ? Math.max(...values) - Math.min(...values) : null;
-  return `<div class="result-grid"><div class="metric"><span>Mesh-Profil</span><strong>${esc(result.profile_name || "default")}</strong></div><div class="metric"><span>Messraster</span><strong>${rows && columns ? `${columns} × ${rows}` : "—"}</strong></div><div class="metric"><span>Höhenspanne</span><strong>${Number.isFinite(range) ? `${range.toFixed(3)} mm` : "—"}</strong></div></div>`;
+  return `<div class="result-grid"><div class="metric"><span>Mesh-Profil</span><strong data-no-i18n>${esc(result.profile_name || "default")}</strong></div><div class="metric"><span>Messraster</span><strong>${rows && columns ? `${columns} × ${rows}` : "—"}</strong></div><div class="metric"><span>Höhenspanne</span><strong>${Number.isFinite(range) ? `${range.toFixed(3)} mm` : "—"}</strong></div></div>`;
 }
 
 function pendingCalibrationValues() {
@@ -530,7 +541,7 @@ function screwsResult() {
   const positions = session.data.positions || [];
   const positioned = positions.filter(point => Object.hasOwn(result.results || {}, point.id));
   const unmatched = entries.filter(([id]) => !positioned.some(point => point.id === id));
-  const rows = unmatched.map(([name, item]) => `<div class="metric"><span>${esc(name)}</span>${adjustment(item)}</div>`).join("");
+  const rows = unmatched.map(([name, item]) => `<div class="metric"><span data-no-i18n>${esc(name)}</span>${adjustment(item)}</div>`).join("");
   const layout = positionMap(positioned, result.results) + (rows ? `<div class="result-grid">${rows}</div>` : "");
   panel.innerHTML = `<span class="kicker">Ergebnis</span><h2>Schrauben einstellen</h2>${layout || '<p>Klipper meldet keine Schraubenergebnisse.</p>'}<p>Stelle die Schrauben bei stillstehendem Drucker ein und wiederhole danach die Messung. Eine mechanische Änderung kann eine erneute Z‑Offset-Kalibrierung erfordern.</p><div class="actions">${button("again", "Erneut messen")} ${button("done", "Fertig", "secondary")}</div>`;
   bind("again", screwsRun); bind("done", dashboard);
@@ -557,7 +568,7 @@ function pidSetup() {
   const heaterName = value => value === "heater_bed" ? "Heizbett" : value === "extruder" ? "Hotend" : value.startsWith("extruder") ? `Hotend · ${value}` : value.replace("heater_generic ", "");
   panel.innerHTML = `<span class="kicker">Heizer wählen</span><h1>PID kalibrieren</h1><p class="lead">Wähle den Heizer und eine typische Drucktemperatur. Nach dem ersten Aufheizen schaltet Klipper den Heizer mehrfach knapp ober- und unterhalb der Zieltemperatur um.</p>
     <label for="heater">Heizer</label><select id="heater">${heaters.map(value=>`<option value="${esc(value)}">${esc(heaterName(value))}</option>`).join("")}</select>
-    <label for="pid-target">Zieltemperatur · 5 °C Schritte</label><div class="input-row"><input id="pid-target" type="number" value="220" min="150" max="300" step="5"><span class="unit">°C</span></div><div class="actions">${button("pid-start", "PID-Tuning starten")}</div>`;
+    <label for="pid-target">Zieltemperatur · Schritte von 5 °C</label><div class="input-row"><input id="pid-target" type="number" value="220" min="150" max="300" step="5"><span class="unit">°C</span></div><div class="actions">${button("pid-start", "PID-Tuning starten")}</div>`;
   const updatePidRange = (value) => { const hotend=value.startsWith("extruder"); const input=document.querySelector("#pid-target"); input.value=hotend?220:60; input.min=hotend?150:30; input.max=hotend?300:130; };
   document.querySelector("#heater").addEventListener("change", (event) => updatePidRange(event.target.value));
   updatePidRange(document.querySelector("#heater").value);
@@ -609,7 +620,7 @@ function flowSetup() {
       <div><h3 id="flow-model-title">Flow-Testkörper · 30 × 30 × 20 mm</h3><p>Für jeden Slicer geeignet. Das Modell wird erst durch die folgenden Slicer-Einstellungen zum einwandigen Messkörper.</p></div>
       <a class="button secondary download-button" href="assets/models/flow-calibration-cube-30x30x20.stl" download="flow-calibration-cube-30x30x20.stl">STL herunterladen</a>
     </section>
-    <div class="slicer-settings"><h3>Slicer-Einstellungen</h3><ul><li>Wände / Perimeter: <strong>1</strong></li><li>Deckschichten: <strong>0</strong></li><li>Infill: <strong>0 %</strong></li><li>Bodenschichten: <strong>3</strong></li><li>Linienbreite: <strong>0,40 mm</strong> (bei 0,4-mm-Düse)</li><li>Spiral-/Vasenmodus: <strong>deaktiviert</strong></li></ul></div>
+    <div class="slicer-settings"><h3>Slicer-Einstellungen</h3><ul><li>Wände / Perimeter: <strong>1</strong></li><li>Deckschichten: <strong>0</strong></li><li>Infill: <strong>0 %</strong></li><li>Bodenschichten: <strong>3</strong></li><li>Linienbreite: <strong>0.40 mm</strong> (bei 0,4-mm-Düse)</li><li>Spiral-/Vasenmodus: <strong>deaktiviert</strong></li></ul></div>
     <p class="measurement-hint">Miss jede Seitenwand mittig, deutlich entfernt von Ecken und untersten Schichten. Verwende bei einer anderen Linienbreite diesen Wert als Sollstärke.</p>
     <div class="detail-grid"><div><label>Sollstärke</label><input id="flow-expected" type="number" value="0.4" min="0.1" step="0.01"></div><div><label>Aktueller Flow</label><input id="flow-current" type="number" value="100" min="70" max="130" step="0.1"></div>${[1,2,3,4].map(n=>`<div><label>Messung ${n}</label><input class="flow-measure" type="number" min="0.1" step="0.01"></div>`).join("")}</div><div class="actions">${button("flow-calc","Extrusionsfaktor berechnen")}</div>`;
   bind("flow-calc",async()=>{await startCalibration("flow"); await calibrationAction("calculate",{expected:Number(document.querySelector("#flow-expected").value),current:Number(document.querySelector("#flow-current").value),measurements:[...document.querySelectorAll(".flow-measure")].map(i=>Number(i.value))}); flowResultPage();});
@@ -703,7 +714,7 @@ function result(verification = false) {
   panel.innerHTML = `<span class="kicker">${verification ? "Verification result" : "Calculated result"}</span><h2>${r.safe_to_apply ? "Measurement looks plausible" : "Please check the measurement"}</h2>
     <div class="result-grid">
       <div class="metric"><span>Requested</span><strong>${r.requested_extrusion.toFixed(2)} mm</strong></div><div class="metric"><span>Actual</span><strong>${r.actual_extrusion.toFixed(2)} mm</strong></div>
-      <div class="metric"><span>Deviation</span><strong>${r.deviation_mm.toFixed(2)} mm · ${r.deviation_percent.toFixed(2)}%</strong></div><div class="metric"><span>${verification ? "Tested" : "New"} rotation distance</span><strong>${r.new_rotation_distance.toFixed(5)} mm</strong></div>
+      <div class="metric"><span>Deviation</span><strong>${r.deviation_mm.toFixed(2)} mm · ${r.deviation_percent.toFixed(2)}%</strong></div><div class="metric"><span>${verification ? "Tested rotation distance" : "New rotation distance"}</span><strong>${r.new_rotation_distance.toFixed(5)} mm</strong></div>
     </div>${warnings}
     <div class="actions">${!verification && r.safe_to_apply ? button("apply", "Apply temporarily") : ""} ${!verification ? button("again", "Measure again", "secondary") : button("save-view", "Continue to save", "secondary")}</div>`;
   bind("apply", async () => { await api("wizards/extruder/apply"); verify(); });

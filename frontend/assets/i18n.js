@@ -155,6 +155,302 @@ const pairs = [
   ["Neuen Wert prüfen", "Verify the new value"], ["Prüfung überspringen", "Skip verification"],
   ["Konfiguration speichern", "Save configuration"], ["Alter Wert", "Old value"], ["Neuer Wert", "New value"],
   ["Kalibrierung gespeichert", "Calibration saved"], ["Kalibrierung abbrechen", "Cancel calibration"],
+  ["Sichere, geführte Einrichtung", "Safe, guided setup"],
+  ["Kalibrierung", "Calibration"],
+  ["Kalibrierungsfortschritt", "Calibration progress"],
+  ["Startseite des Calibration Wizard", "Calibration Wizard home"],
+  ["Unbekannt", "Unknown"],
+  ["Schritt", "Step"],
+  ["Heizen", "Heat"],
+  ["Markieren", "Mark"],
+  ["Extrudieren", "Extrude"],
+  ["Prüfung", "Verification"],
+  ["Prüfergebnis", "Verification result"],
+  ["Optional", "Optional"],
+  ["Neue Rotationsdistanz", "New rotation distance"],
+  ["Geprüfte Rotationsdistanz", "Tested rotation distance"],
+  ["Weiter zum Speichern", "Continue to save"],
+  ["Wähle eine für das eingelegte Filament geeignete Temperatur. Fahre erst fort, wenn Klipper die Extrusion als sicher meldet.", "Choose a temperature suitable for the loaded filament. Continue only when Klipper reports that extrusion is safe."],
+  ["Zieltemperatur · Schritte von 5 °C", "Target temperature · 5 °C increments"],
+  ["Wähle eine Temperatur in Schritten von 5 °C.", "Choose a temperature in 5 °C increments."],
+  ["Heizt…", "Heating…"],
+  ["Lade Filament, wähle einen eindeutigen festen Bezugspunkt am Extrudereingang und markiere genau", "Load filament, choose an unambiguous fixed reference point at the extruder entrance, then measure and mark exactly"],
+  ["oberhalb davon.", "above it."],
+  ["Der Extruder bewegt sich langsam mit 1 mm/s. Klippers Schutz vor kalter Extrusion und der Druckerzustand werden unmittelbar vor der Bewegung erneut geprüft.", "The extruder will move slowly at 1 mm/s. Klipper's cold-extrusion protection and printer state are checked again immediately before motion."],
+  ["Extrusion läuft…", "Extruding…"],
+  ["Miss vom selben festen Bezugspunkt bis zur Filamentmarkierung. Gib die Reststrecke möglichst genau ein.", "Measure from the same fixed reference point to the filament mark. Enter the remaining distance as precisely as possible."],
+  ["Gib eine gültige Reststrecke ein.", "Enter a valid remaining distance."],
+  ["Die neue Rotationsdistanz bleibt bis zum Klipper-Neustart aktiv. Du kannst die Messung vor dem Speichern wiederholen oder direkt zur ausdrücklichen Speicherbestätigung gehen.", "The new rotation distance is active until Klipper restarts. You can repeat the measurement before saving, or proceed directly to the explicit save confirmation."],
+  ["Zuerst wird ein Backup mit Zeitstempel erstellt. Nur die Einstellung", "A timestamped backup is created first. Only the exact"],
+  ["in ihrer ursprünglichen Include-Datei wird geändert.", "setting in its source include file is changed."],
+  ["Dauerhaftes Speichern ist nicht verfügbar, weil die Quelldatei der Einstellung nicht ermittelt werden konnte. Der temporäre Wert bleibt bis zum Neustart aktiv.", "Permanent writes are unavailable because the source setting could not be resolved. The temporary value remains active until restart."],
+  ["Ich bestätige diese alten und neuen Werte und möchte die Klipper-Konfiguration ändern.", "I confirm these old and new values and want to change the Klipper configuration."],
+  ["Bestätige zuerst die dauerhafte Konfigurationsänderung.", "Confirm the permanent configuration change first."],
+  ["Der Wert ist bereits zur Laufzeit aktiv. Das Backup kann wie in der Installationsanleitung beschrieben wiederhergestellt werden.", "The runtime value is already active. The backup can be restored as described in the installation guide."],
+  ["Geführter Ablauf", "Guided workflow"],
+  ["Bettschrauben ausrichten", "Level bed screws"],
+  ["Klipper fährt jede konfigurierte Schraube an. Du stellst den Papierwiderstand nacheinander von Hand ein.", "Klipper moves to each configured screw. You adjust the paper resistance manually at each position."],
+  ["Manueller Papier-Test", "Manual paper test"],
+  ["Erste Schraube anfahren", "Move to the first screw"],
+  ["Klipper fährt die Schrauben der Reihe nach an. Stelle an jeder Position denselben leichten Papierwiderstand ein und gehe dann zur nächsten Schraube.", "Klipper moves to the screws in sequence. Set the same light paper resistance at each position, then move to the next screw."],
+  ["Schraube einstellen", "Adjust screw"],
+  ["Papierwiderstand angleichen", "Match paper resistance"],
+  ["Drehe nur die aktuell angefahrene Schraube. Klicke danach auf „Nächste Schraube“. Klipper wiederholt den Rundgang, bis du das Ergebnis akzeptierst.", "Turn only the screw at the current position. Then click “Next screw”. Klipper repeats the sequence until you accept the result."],
+  ["Nächste Schraube", "Next screw"],
+  ["Ausrichtung akzeptieren", "Accept leveling"],
+  ["Einstellen", "Adjust"],
+  ["Wiederholen", "Repeat"],
+  ["Probe starten", "Start probe"],
+  ["Auswerten", "Evaluate"],
+  ["Test drucken", "Print test"],
+  ["starten", "start"],
+  ["speichern", "save"],
+  ["gespeichert", "saved"],
+  ["prüfen", "review"],
+  ["Referenz", "Reference"],
+  ["Punkte", "points"],
+  ["Messung", "Measurement"],
+  ["Name", "Name"],
+  ["Prüfe, dass der Bauraum frei ist. Der Drucker führt anschließend", "Make sure the build volume is clear. The printer will then run"],
+  ["aus.", "."],
+  ["Klipper fährt alle in", "Klipper probes every point defined in"],
+  ["definierten Punkte ab. Dieser Vorgang kann mehrere Minuten dauern.", ". This may take several minutes."],
+  ["Klipper positioniert die Düse und startet", "Klipper positions the nozzle and starts"],
+  [". Lege danach ein normales Blatt Papier unter die saubere Düse.", ". Then place a normal sheet of paper under the clean nozzle."],
+  ["Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert.", "The new mesh is calculated. SAVE_CONFIG saves it permanently in Klipper."],
+  ["Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert.", "The offset is applied but has not been saved permanently yet."],
+  ["Zieltemperatur · Schritte von 5 °C", "Target temperature · 5 °C steps"],
+  ["PID-Tuning läuft…", "PID tuning running…"],
+  ["PID-Werte", "PID values"],
+  ["Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", "Klipper has calculated new PID values. Review the result, then explicitly save it."],
+  ["Direct Drive · Faktor 0,005", "Direct Drive · factor 0.005"],
+  ["Bowden · Faktor 0,020", "Bowden · factor 0.020"],
+  ["Lade das", "Download the"],
+  ["offizielle Klipper-Testmodell", "official Klipper test model"],
+  [", slice es mit 0,4-mm Düse, 0,2-mm Schichthöhe, 100 mm/s und deaktivierter dynamischer Beschleunigungssteuerung. Starte danach hier den Tuning-Tower-Befehl und anschließend den Druck in Mainsail.", ", slice it with a 0.4 mm nozzle, 0.2 mm layer height, 100 mm/s, and dynamic acceleration control disabled. Then enable the tuning tower here and start the print in Mainsail."],
+  ["Der Wert wird zuerst nur zur Laufzeit gesetzt. Erst deine nächste Bestätigung schreibt ihn in die Extruder-Konfiguration.", "The value is initially applied only at runtime. Your next confirmation writes it to the extruder configuration."],
+  [". Übernimm den neuen Wert in dein Filamentprofil im Slicer und drucke zur Kontrolle erneut.", ". Apply the new value to your filament profile in the slicer and print again to verify it."],
+  ["Achsen referenzieren", "Home axes"],
+  ["Räume den Bauraum frei. Anschließend wird G28 ausgeführt.", "Clear the build volume. G28 will then run."],
+  ["Sensor und Kabel sind sicher befestigt, der Bauraum ist frei.", "The sensor and cable are securely attached and the build volume is clear."],
+  ["Bestätige zuerst die sichere Vorbereitung.", "Confirm the safe preparation first."],
+  ["Messung läuft…", "Measurement running…"],
+  ["Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.", "Klipper has calculated suitable shapers. SAVE_CONFIG saves them permanently."],
+  ["Ich möchte genau die Ergebnisse dieser Kalibrierung mit SAVE_CONFIG speichern und Klipper neu starten.", "I want to save the results of this calibration with SAVE_CONFIG and restart Klipper."],
+  ["SAVE_CONFIG ausführen", "Run SAVE_CONFIG"],
+  ["Bestätige die dauerhafte Änderung zuerst.", "Confirm the permanent change first."],
+  ["Konfigurationsdatei mit Backup ändern.", "Change the configuration file with a backup."],
+  ["In Konfiguration speichern", "Save to configuration"],
+  ["Bestätige die Änderung zuerst.", "Confirm the change first."],
+  ["Backup erstellen, Konfiguration schreiben und Klipper neu starten.", "Create a backup, write the configuration, and restart Klipper."],
+  ["Bestätige die Änderung und den Klipper-Neustart.", "Confirm the change and the Klipper restart."],
+  ["Not-Aus konnte nicht ausgelöst werden", "Emergency stop could not be triggered"],
+  ["Einrichtung konnte nicht geladen werden", "Could not load setup"],
+  ["Anfrage fehlgeschlagen", "Request failed"],
+  ["Prüfe den Drucker in Mainsail.", "Check the printer in Mainsail."],
+  ["Klipper muss für die Einrichtung bereit sein", "Klipper must be ready for setup"],
+  ["Die Konfiguration kann während eines Drucks nicht geändert werden", "The configuration cannot be changed during a print"],
+  ["Dauerhafte Konfigurationsänderungen sind deaktiviert", "Permanent configuration writes are disabled"],
+  ["Die Einrichtungs-Vorschau ist ungültig oder wurde verändert", "The setup preview is invalid or has been changed"],
+  ["Für diese Kalibrierung gibt es keinen Einrichtungsassistenten", "No setup wizard is available for this calibration"],
+  ["Mesh-Maximum muss rechts oberhalb des Minimums liegen", "The mesh maximum must be above and to the right of the minimum"],
+  ["Ungültiges Schraubengewinde", "Invalid screw thread"],
+  ["Klipper muss bereit sein, um offene Konfigurationswerte aufzulösen.", "Klipper must be ready to resolve pending configuration values."],
+  ["Offene Konfigurationswerte können nicht während eines Drucks aufgelöst werden.", "Pending configuration values cannot be resolved during a print."],
+  ["Klipper hat keine ungespeicherten SAVE_CONFIG-Werte.", "Klipper has no unsaved SAVE_CONFIG values."],
+  ["Keine Kalibrierungssitzung ist aktiv", "No calibration session is active"],
+  ["Druckerverbindung verloren", "Printer connection lost"],
+  ["Die Extruder-Kalibrierung ist während eines Drucks oder einer Pause gesperrt", "Extruder calibration is blocked while a print is active or paused"],
+  ["Abstände müssen positiv sein", "Distances must be positive"],
+  ["Der Markierungsabstand muss größer als die Extrusionsstrecke sein", "Mark distance must be greater than extrusion distance"],
+  ["Die angeforderten Abstände überschreiten die Sicherheitsgrenzen", "Requested distances exceed safety limits"],
+  ["Klipper hat keine gültige rotation_distance gemeldet", "Klipper did not report a valid rotation_distance"],
+  ["Die Temperatur muss in Schritten von 5 °C gewählt werden", "Temperature must be selected in 5 °C increments"],
+  ["Das Hotend hat noch keine sichere Extrusionstemperatur erreicht", "The hotend has not reached a safe extrusion temperature"],
+  ["Der Schutz vor kalter Extrusion ist aktiv", "Cold extrusion protection is active"],
+  ["Plausibilitätswarnungen müssen durch erneutes Messen behoben werden", "Plausibility warnings must be resolved by measuring again"],
+  ["Kein sicheres Ergebnis verfügbar", "No safe result is available"],
+  ["Die Speicherbestätigung ist ungültig oder abgelaufen", "Save confirmation token is invalid or expired"],
+  ["Die Bestätigung des alten Werts passt nicht zu dieser Sitzung", "Old value confirmation does not match this session"],
+  ["Die Bestätigung des neuen Werts passt nicht zu dieser Sitzung", "New value confirmation does not match this session"],
+  ["Während des laufenden Extrusionsbefehls kann nicht abgebrochen werden", "Cannot cancel while the synchronous extrusion command is running"],
+  ["Alle Werte müssen endliche Zahlen sein", "All values must be finite numbers"],
+  ["Die aktuelle rotation_distance liegt außerhalb des unterstützten Bereichs", "The current rotation_distance is outside the supported range"],
+  ["Markierungsabstand und Extrusionsstrecke müssen positiv sein", "Mark and extrusion distances must be positive"],
+  ["Die Reststrecke darf nicht negativ sein", "Remaining distance cannot be negative"],
+  ["Die Reststrecke muss kleiner als der Markierungsabstand sein", "Remaining distance must be smaller than the mark distance"],
+  ["Die berechnete rotation_distance ist unrealistisch.", "The calculated rotation_distance is not realistic."],
+  ["Die gemessene Extrusion weicht um mehr als 20 % vom angeforderten Wert ab.", "The measured extrusion differs by more than 20% from the request."],
+  ["Die gemessene Extrusion weicht um mehr als 10 % ab; miss sorgfältig nach.", "The measured extrusion differs by more than 10%; remeasure carefully."],
+  ["Die neue rotation_distance verändert den aktuellen Wert um mehr als 20 %.", "The new rotation_distance changes the current value by more than 20%."],
+  ["Klipper muss verbunden und bereit sein", "Klipper must be connected and ready"],
+  ["Während eines Drucks oder einer Pause ist die Aktion gesperrt", "The action is blocked during a print or pause"],
+  ["Kalibrierung ist nicht verfügbar", "Calibration is unavailable"],
+  ["Klipper hat bereits ungespeicherte SAVE_CONFIG-Werte. Speichere oder verwerfe diese zuerst, damit die Kalibrierung keine fremden Änderungen übernimmt.", "Klipper already has unsaved SAVE_CONFIG values. Save or discard them first so this calibration does not include unrelated changes."],
+  ["Für diese Kalibrierung ist keine Sitzung aktiv", "No session is active for this calibration"],
+  ["Unbekannte Kalibrierung", "Unknown calibration"],
+  ["Der gewählte Heizer ist nicht konfiguriert", "The selected heater is not configured"],
+  ["Extruder-Typ muss Direct Drive oder Bowden sein", "The extruder type must be Direct Drive or Bowden"],
+  ["Achse muss X, Y oder beide sein", "The axis must be X, Y, or both"],
+  ["Unbekannte Kalibrierung oder Aktion", "Unknown calibration or action"],
+  ["Diese Kalibrierung ist bereits beendet", "This calibration has already ended"],
+  ["Beende oder brich den Testdruck in Mainsail ab, bevor du die Pressure-Advance-Kalibrierung verlässt.", "Finish or cancel the test print in Mainsail before leaving Pressure Advance calibration."],
+  ["Diese PID-Aktion ist nicht erlaubt", "This PID action is not allowed"],
+  ["Vor dem Bed Mesh müssen alle Achsen referenziert werden", "All axes must be homed before bed mesh calibration"],
+  ["Diese Bed-Mesh-Aktion ist nicht erlaubt", "This bed mesh action is not allowed"],
+  ["Diese Schrauben-Aktion ist nicht erlaubt", "This screw action is not allowed"],
+  ["Vor SCREWS_TILT_CALCULATE müssen alle Achsen referenziert werden", "All axes must be homed before SCREWS_TILT_CALCULATE"],
+  ["Diese Gantry-Aktion ist nicht erlaubt", "This gantry action is not allowed"],
+  ["Vor der Gantry-Kalibrierung müssen alle Achsen referenziert werden", "All axes must be homed before gantry calibration"],
+  ["Diese Bed-Screws-Aktion ist nicht erlaubt", "This bed screws action is not allowed"],
+  ["Vor PROBE_CALIBRATE müssen alle Achsen referenziert werden", "All axes must be homed before PROBE_CALIBRATE"],
+  ["Nicht erlaubte TESTZ-Schrittweite", "Invalid TESTZ step size"],
+  ["Diese Probe-Aktion ist nicht erlaubt", "This probe action is not allowed"],
+  ["Messhöhe muss zwischen 0 und 100 mm liegen", "The measured height must be between 0 and 100 mm"],
+  ["Berechneter Pressure-Advance-Wert ist unplausibel", "The calculated Pressure Advance value is implausible"],
+  ["Diese Pressure-Advance-Aktion ist nicht erlaubt", "This Pressure Advance action is not allowed"],
+  ["Diese Flow-Aktion ist nicht erlaubt", "This flow action is not allowed"],
+  ["Für die Flow-Berechnung sind genau vier Messwerte erforderlich", "Exactly four measurements are required to calculate flow"],
+  ["Sollmaß und Messwerte müssen größer als null sein", "The target size and measurements must be greater than zero"],
+  ["Das Ergebnis liegt außerhalb des sicheren Bereichs 70–130 %", "The result is outside the safe range of 70–130 %"],
+  ["Vor der Resonanzmessung müssen X und Y referenziert werden", "X and Y must be homed before resonance measurement"],
+  ["Diese Input-Shaper-Aktion ist nicht erlaubt", "This Input Shaper action is not allowed"],
+  ["Speicherbestätigung ist ungültig oder abgelaufen", "Save confirmation is invalid or expired"],
+  ["Ungültiger Zahlenwert", "Invalid numeric value"],
+  ["Zahlenwert muss endlich sein", "The numeric value must be finite"],
+  ["Klipper ist für eine sichere Extrusion nicht bereit", "Klipper is not ready for a safe extrusion"],
+  ["Klipper meldet eine ungültige max_extrude_only_distance", "Invalid max_extrude_only_distance reported by Klipper"],
+  ["Ungültige Rotationsdistanz", "Invalid rotation distance"],
+  ["Das simulierte Hotend ist nicht bereit zum Extrudieren", "Mock hotend is not ready to extrude"],
+  ["Die vorhandene rotation_distance ist keine einfache Zahl", "Existing rotation_distance is not a plain number"],
+  ["Die Konfiguration wurde seit der Kalibrierung geändert; der aktuelle Wert wird nicht überschrieben", "Configuration changed since calibration; refusing to overwrite the current value"],
+  ["Die rotation_distance-Zeile konnte nicht sicher geändert werden", "Could not safely rewrite the rotation_distance line"],
+  ["Der neue Wert muss endlich sein", "New value must be finite"],
+  ["Die Konfiguration wurde seit der Vorschau geändert; neuere Werte werden nicht überschrieben", "Configuration changed since preview; refusing to overwrite newer values"],
+  ["Es wurden keine Abschnittseinstellungen angegeben", "No section settings were supplied"],
+  ["Zustandsänderungen von einer anderen Herkunft sind nicht erlaubt", "Cross-origin state changes are not allowed"],
+  ["Frontend ist nicht installiert", "Frontend is not installed"],
+  ["Punkt", "Point"],
+  ["Extruder-Kalibrierung", "Extruder calibration"],
+  ["0,40 mm", "0.40 mm"],
+  ["Bewegungsgeschwindigkeit", "Travel speed"],
+  ["Z-Höhe beim Verfahren", "Travel Z height"],
+  ["Papier-Test-Höhe", "Paper test height"],
+  ["Wiederholungen", "Retries"],
+  ["Wiederholungstoleranz", "Retry tolerance"],
+  ["Maximale Korrektur", "Maximum adjustment"],
+  ["Prüfen", "Verify"],
+  ["bereit", "ready"],
+  ["nicht verbunden", "disconnected"],
+  ["Heruntergefahren", "shutdown"],
+  ["Startet", "startup"],
+  ["Fehler", "error"],
+  ["Druckt", "printing"],
+  ["Pausiert", "paused"],
+  ["Inaktiv", "standby"],
+  ["Abgebrochen", "cancelled"],
+  ["Fehlgeschlagen", "failed"],
+  ["Düse", "Nozzle"],
+];
+
+const templates = [
+  ["Klipper-Zustand: {state}", "Klipper state is {state}"],
+  [
+    "Extrudiere {distance} mm erneut",
+    "Extrude {distance} mm again"
+  ],
+  [
+    "Extrudiere {distance} mm",
+    "Extrude {distance} mm"
+  ],
+  [
+    "Name von Schraube {index} enthält ungültige Zeichen",
+    "Name of screw {index} contains invalid characters"
+  ],
+  [
+    "Es werden {minimum} bis {maximum} Punkte benötigt",
+    "Between {minimum} and {maximum} points are required"
+  ],
+  [
+    "Punkt {index} ist ungültig",
+    "Point {index} is invalid"
+  ],
+  [
+    "{label} benötigt X und Y",
+    "{label} requires X and Y"
+  ],
+  [
+    "{label} muss ganzzahlig sein",
+    "{label} must be an integer"
+  ],
+  [
+    "{label} muss zwischen {minimum} und {maximum} liegen",
+    "{label} must be between {minimum} and {maximum}"
+  ],
+  [
+    "{label} ist keine gültige Zahl",
+    "{label} is not a valid number"
+  ],
+  [
+    "Aktion ist in Zustand {state} nicht erlaubt; erwartet: {expected}",
+    "Action is not allowed in {state}; expected {expected}"
+  ],
+  [
+    "Klipper muss bereit sein (aktueller Zustand: {state})",
+    "Klipper must be ready (current state: {state})"
+  ],
+  [
+    "Die Temperatur muss zwischen {minimum} und 300 °C liegen",
+    "Temperature must be between {minimum} and 300 °C"
+  ],
+  [
+    "Zieltemperatur muss in 5-°C-Schritten zwischen {minimum} und {maximum} liegen",
+    "Target temperature must be in 5 °C increments between {minimum} and {maximum}"
+  ],
+  [
+    "Aktualisiert: {source}; Backup: {backup}",
+    "Updated {source}; backup: {backup}"
+  ],
+  [
+    "Die Quelldatei der Einstellung liegt außerhalb des beschreibbaren Konfigurationsverzeichnisses: {path}",
+    "Setting source is outside the writable config root: {path}"
+  ],
+  [
+    "Konfigurationsdatei existiert nicht: {path}",
+    "Configuration file does not exist: {path}"
+  ],
+  [
+    "Das Include-Muster findet keine Dateien: {pattern}",
+    "Include pattern matched no files: {pattern}"
+  ],
+  [
+    "[{section}] {key} wurde im geladenen Konfigurationsbaum nicht gefunden",
+    "[{section}] {key} was not found in the loaded config tree"
+  ],
+  [
+    "Die Einstellung ist mehrdeutig; gefunden in {locations}",
+    "Setting is ambiguous; found at {locations}"
+  ],
+  [
+    "Abschnitt [{section}] fehlt oder ist mehrdeutig",
+    "Section [{section}] is missing or ambiguous"
+  ],
+  [
+    "{key} konnte nicht sicher geändert werden",
+    "Could not safely rewrite {key}"
+  ],
+  [
+    "Ungültiger Einstellungsname: {key}",
+    "Invalid setting name: {key}"
+  ],
+  [
+    "Unsichere Zeichen in [{section}] {key}",
+    "Unsafe characters in [{section}] {key}"
+  ],
+  [
+    "Abschnitt [{section}] ist mehrdeutig; gefunden in {locations}",
+    "Section [{section}] is ambiguous; found in {locations}"
+  ]
 ];
 
 let locale = localStorage.getItem("kcw-language") || (navigator.language?.toLowerCase().startsWith("de") ? "de" : "en");
@@ -164,18 +460,89 @@ export const getLocale = () => locale;
 export const setLocale = (value) => { locale = messages[value] ? value : "en"; localStorage.setItem("kcw-language", locale); document.documentElement.lang = locale; };
 export const t = (key) => messages[locale][key] ?? messages.en[key] ?? key;
 
-function translate(value) {
-  const direction = locale === "en" ? pairs : pairs.map(([de,en]) => [en,de]);
-  const replacements = new Map(direction);
-  const pattern = [...replacements.keys()].sort((a,b)=>b.length-a.length).map(value=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|");
-  return pattern ? value.replace(new RegExp(pattern,"g"), match=>replacements.get(match)) : value;
+const escapePattern = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const placeholder = /\{(\w+)\}/g;
+const translators = Object.fromEntries(["de", "en"].map(language => {
+  // Accept both source languages, including text already rendered in the selected language.
+  const replacements = new Map();
+  for (const [de, en] of pairs) {
+    const target = language === "de" ? de : en;
+    if (!replacements.has(de)) replacements.set(de, target);
+    if (!replacements.has(en)) replacements.set(en, target);
+  }
+  for (const key of ["welcomeTitle", "welcomeBody"]) {
+    for (const source of ["de", "en"]) replacements.set(messages[source][key], messages[language][key]);
+  }
+  const pattern = [...replacements.keys()].sort((a, b) => b.length - a.length).map(escapePattern).join("|");
+  const regex = new RegExp(pattern, "gu");
+  const dynamic = templates.flatMap(pair => pair.map(source => {
+    const names = [...source.matchAll(placeholder)].map(match => match[1]);
+    const expression = source.split(placeholder).map((part, index) => index % 2 ? "(.+?)" : escapePattern(part)).join("");
+    return {regex: new RegExp(`^${expression}$`, "u"), names, target: pair[language === "de" ? 0 : 1], specificity: source.replace(placeholder, "").length};
+  }));
+  dynamic.sort((a, b) => b.specificity - a.specificity);
+  return [language, {replacements, regex, dynamic}];
+}));
+
+const wordCharacter = /[\p{L}\p{N}_]/u;
+function replacePhrases(text, replacements, regex) {
+  return text.replace(regex, (match, offset) => {
+    // Punctuation fragments may follow inline values; words must remain whole.
+    if (wordCharacter.test(match[0]) && wordCharacter.test(text[offset - 1] || "")) return match;
+    if (wordCharacter.test(match.at(-1)) && wordCharacter.test(text[offset + match.length] || "")) return match;
+    return replacements.get(match);
+  });
 }
 
-export function localize(root=document.body) {
+export function translate(value) {
+  const {replacements, regex, dynamic} = translators[locale];
+  const text = String(value);
+  const trimmed = text.trim();
+  for (const entry of dynamic) {
+    const match = trimmed.match(entry.regex);
+    if (!match) continue;
+    const values = Object.fromEntries(entry.names.map((name, index) => [name, name === "label" ? replacePhrases(match[index + 1], replacements, regex) : match[index + 1]]));
+    const translated = entry.target.replace(placeholder, (_, name) => values[name]);
+    return text.slice(0, text.indexOf(trimmed)) + translated + text.slice(text.indexOf(trimmed) + trimmed.length);
+  }
+  return replacePhrases(text, replacements, regex);
+}
+
+// Keep the original text so repeated language changes do not reverse ambiguous translations.
+const originals = new WeakMap();
+function localizedValue(owner, key, value) {
+  let entries = originals.get(owner);
+  if (!entries) { entries = new Map(); originals.set(owner, entries); }
+  const previous = entries.get(key);
+  const source = previous?.rendered === value ? previous.source : value;
+  const rendered = translate(source);
+  entries.set(key, {source, rendered});
+  return rendered;
+}
+
+export function localize(root = document.body) {
   if (!root) return;
   document.documentElement.lang = locale;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
-  nodes.forEach(node=>{ if(node.parentElement?.closest("code, pre, script, style")) return; const changed=translate(node.nodeValue); if(changed!==node.nodeValue) node.nodeValue=changed; });
-  root.querySelectorAll?.("[placeholder],[aria-label],[title]").forEach(element=>["placeholder","aria-label","title"].forEach(attribute=>{if(element.hasAttribute(attribute)){const value=element.getAttribute(attribute);const changed=translate(value);if(changed!==value)element.setAttribute(attribute,changed);}}));
+  const nodes = [];
+  if (root.nodeType === Node.TEXT_NODE) nodes.push(root);
+  else {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+  }
+  for (const node of nodes) {
+    if (node.parentElement?.closest("code, pre, script, style, [data-no-i18n]")) continue;
+    const changed = localizedValue(node, "text", node.nodeValue);
+    if (changed !== node.nodeValue) node.nodeValue = changed;
+  }
+  const elements = [...(root.querySelectorAll?.("[placeholder],[aria-label],[title]") || [])];
+  if (root.nodeType === Node.ELEMENT_NODE) elements.unshift(root);
+  for (const element of elements) {
+    if (element.closest("code, pre, script, style, [data-no-i18n]")) continue;
+    for (const attribute of ["placeholder", "aria-label", "title"]) {
+      if (!element.hasAttribute(attribute)) continue;
+      const value = element.getAttribute(attribute);
+      const changed = localizedValue(element, attribute, value);
+      if (changed !== value) element.setAttribute(attribute, changed);
+    }
+  }
 }
