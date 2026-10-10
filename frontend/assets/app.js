@@ -243,7 +243,6 @@ function filamentPage() {
       </div>
       <div id="filament-heating" class="hidden"><strong id="filament-live-temperature"></strong><progress id="filament-heat-progress" max="100" value="0"></progress></div>
       <div id="filament-moving" class="hidden"><strong id="filament-move-label"></strong><progress id="filament-move-progress" max="100" value="0" aria-labelledby="filament-move-label"></progress></div>
-      <p>Pro Vorgang werden 100 mm Filament bewegt. Beim Laden folgen 2 mm Retract; vor dem Entladen werden 5 mm extrudiert.</p>
       <p id="filament-dialog-error" class="notice hidden" role="alert"></p>
       <p id="filament-hot-note" class="hidden">Mit „Fertig“ wird das Hotend ausgeschaltet.</p>
       <div class="actions">${button("filament-confirm", "Aufheizen")} ${button("filament-keep-hot", "Beenden und Hotend anlassen", "secondary")} ${button("filament-close", "Abbrechen", "secondary")}</div>`;
@@ -303,7 +302,7 @@ function filamentPage() {
         if (disposed || stage !== "running") return;
         if (current.operation_id === token) {
           moveProgress.value = current.percent;
-          moveLabel.textContent = `${current.completed} / ${current.total} mm · ${current.percent} %`;
+          moveLabel.textContent = `${current.percent} %`;
         }
       } catch {
         // Losing progress updates must not unlock controls while the printer is moving.
@@ -373,7 +372,7 @@ function filamentPage() {
       heating.classList.add("hidden");
       moving.classList.remove("hidden");
       moveProgress.value = 0;
-      moveLabel.textContent = `0 / ${direction === "load" ? 102 : 105} mm · 0 %`;
+      moveLabel.textContent = "0 %";
       localize(dialog);
       try {
         const movement = request(direction, {speed, confirmation_token: token});
@@ -381,7 +380,7 @@ function filamentPage() {
         await movement;
         clearTimeout(timer);
         moveProgress.value = 100;
-        moveLabel.textContent = `${direction === "load" ? 102 : 105} / ${direction === "load" ? 102 : 105} mm · 100 %`;
+        moveLabel.textContent = "100 %";
         heating.classList.add("hidden");
         if (mode === "change" && direction === "unload") {
           stage = "swap";
