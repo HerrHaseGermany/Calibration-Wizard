@@ -58,6 +58,7 @@ class CalibrationManager:
             available, reason = availability(definition.id, caps)
             data = {
                 "id": definition.id,
+                "category": definition.category,
                 "name": definition.name,
                 "name_key": f"wizards.{definition.id}.name",
                 "description": definition.description,

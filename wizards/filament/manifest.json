@@ -1,0 +1,27 @@
+{
+  "id": "filament",
+  "name": "Filament laden / entladen",
+  "description": "Hotend aufheizen und Filament kontrolliert laden oder entladen.",
+  "version": 1,
+  "category": "helper",
+  "available": true,
+  "requirements": [
+    "extruder"
+  ],
+  "defaults": {
+    "temperature": 210,
+    "speed": 5,
+    "distance": 100,
+    "load_retract": 2,
+    "unload_prime": 5
+  },
+  "states": [
+    "SELECTION",
+    "HEATING",
+    "READY",
+    "RUNNING",
+    "SWAP",
+    "COMPLETE",
+    "ERROR"
+  ]
+}

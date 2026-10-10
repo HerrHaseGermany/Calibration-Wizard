@@ -1,8 +1,9 @@
 // The application references stable keys; all copy lives in locales/*.json.
 const catalogs = {};
 const storage = globalThis.localStorage;
-let locale = storage?.getItem("kcw-language") || (globalThis.navigator?.language?.toLowerCase().startsWith("de") ? "de" : "en");
-if (!["de", "en"].includes(locale)) locale = "en";
+let preference = storage?.getItem("kcw-language") || "system";
+if (!["system", "de", "en"].includes(preference)) preference = "system";
+let locale = resolveLocale(preference);
 const bindings = new Map();
 const escapeAttribute = value => String(value).replace(/[&<>"']/g, char => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[char]);
 
@@ -11,14 +12,26 @@ export async function loadLocales(loader = async url => {
   if (!response.ok) throw new Error(`Could not load locale: ${response.status}`);
   return response.json();
 }) {
-  const entries = await Promise.all(["de", "en"].map(async language => [language, await loader(new URL(`./locales/${language}.json?v=20261010-8`, import.meta.url))]));
+  const entries = await Promise.all(["de", "en"].map(async language => [language, await loader(new URL(`./locales/${language}.json?v=20261010-9`, import.meta.url))]));
   Object.assign(catalogs, Object.fromEntries(entries));
 }
 
 export const getLocale = () => locale;
+export const getLanguagePreference = () => preference;
+
+export function resolveLocale(value, languages = globalThis.navigator?.languages || [globalThis.navigator?.language]) {
+  if (["de", "en"].includes(value)) return value;
+  for (const language of languages) {
+    const candidate = String(language || "").toLowerCase().split(/[-_]/)[0];
+    if (["de", "en"].includes(candidate)) return candidate;
+  }
+  return "en";
+}
+
 export function setLocale(value) {
-  locale = ["de", "en"].includes(value) ? value : "en";
-  storage?.setItem("kcw-language", locale);
+  preference = ["system", "de", "en"].includes(value) ? value : "system";
+  locale = resolveLocale(preference);
+  storage?.setItem("kcw-language", preference);
   if (globalThis.document) document.documentElement.lang = locale;
 }
 

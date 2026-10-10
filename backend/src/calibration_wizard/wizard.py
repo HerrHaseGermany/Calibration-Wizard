@@ -24,6 +24,7 @@ class WizardDefinition:
     description: str
     available: bool
     required_features: tuple[str, ...]
+    category: str = "calibration"
 
 
 def load_wizard_definitions(root: Path | None = None) -> tuple[WizardDefinition, ...]:
@@ -38,11 +39,13 @@ def load_wizard_definitions(root: Path | None = None) -> tuple[WizardDefinition,
                 description=data["description"],
                 available=bool(data["available"]),
                 required_features=tuple(data.get("requirements", ())),
+                category=data.get("category", "calibration"),
             )
         )
     if not definitions:
         raise RuntimeError(f"No wizard manifests found below {root}")
     order = {
+        "filament": -1,
         "pid": 0,
         "extruder": 1,
         "bed_screws": 2,

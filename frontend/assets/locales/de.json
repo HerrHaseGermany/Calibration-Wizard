@@ -567,5 +567,10 @@
   "wizards.screws_tilt.description": "Drehrichtung und Korrektur jeder Bettschraube automatisch ermitteln.",
   "wizards.screws_tilt.name": "Bettschrauben",
   "wizards.z_tilt.description": "Gantry mit zwei oder mehr unabhängig angetriebenen Z-Motoren ausrichten.",
-  "wizards.z_tilt.name": "Z-Tilt"
+  "wizards.z_tilt.name": "Z-Tilt",
+  "wizards.filament.name": "Filament laden / entladen",
+  "wizards.filament.description": "Hotend aufheizen und Filament kontrolliert laden oder entladen.",
+  "configuration.title": "Kalibrierungen konfigurieren",
+  "configuration.description": "Wähle eine Kalibrierung, um ihre Druckergeometrie und Einstellungen einzurichten.",
+  "language.system": "System / Browser"
 }

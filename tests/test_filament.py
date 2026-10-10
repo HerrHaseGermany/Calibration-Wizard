@@ -266,3 +266,13 @@ def test_failed_movement_does_not_report_completion():
     assert progress["state"] == "error"
     assert progress["completed"] == 5
     assert progress["percent"] < 100
+
+
+def test_filament_is_registered_as_helper_and_module_is_served(filament_client):
+    client, _printer = filament_client
+    definitions = client.get("/api/wizards").json()
+    assert definitions[0]["id"] == "filament"
+    assert definitions[0]["category"] == "helper"
+    response = client.get("/assets/wizards/filament/frontend.mjs")
+    assert response.status_code == 200
+    assert "export function renderFilamentPage" in response.text

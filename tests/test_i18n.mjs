@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {loadLocales, t, msg, setLocale, setText, applyTranslations, apiError} from "../frontend/assets/i18n.js";
+import {loadLocales, t, msg, getLocale, getLanguagePreference, resolveLocale, setLocale, setText, applyTranslations, apiError} from "../frontend/assets/i18n.js";
 
 const catalogs = {};
 await loadLocales(async url => {
@@ -63,8 +63,8 @@ test("frontend no longer uses phrase matching or a translation observer", async 
 });
 
 test("frontend key references exist in the catalogs", async () => {
-  for (const name of ["app.js", "positions.mjs"]) {
-    const source = await readFile(new URL(`../frontend/assets/${name}`,import.meta.url),"utf8");
+  for (const path of ["../frontend/assets/app.js", "../frontend/assets/positions.mjs", "../wizards/filament/frontend.mjs"]) {
+    const source = await readFile(new URL(path,import.meta.url),"utf8");
     const keys = [...source.matchAll(/\b(?:t|msg|LocalizedError)\(["']([^"']+)["']/g)].map(match=>match[1]);
     for (const key of keys) assert.ok(Object.hasOwn(catalogs.de,key), key);
   }
@@ -72,4 +72,24 @@ test("frontend key references exist in the catalogs", async () => {
   for (const match of html.matchAll(/data-i18n(?:-aria-label|-title|-placeholder)?="([^"]+)"/g)) {
     assert.ok(Object.hasOwn(catalogs.de,match[1]),match[1]);
   }
+});
+
+
+test("automatic language follows browser preferences while manual choices take priority", () => {
+  assert.equal(resolveLocale("system", ["de-DE", "en-US"]), "de");
+  assert.equal(resolveLocale("system", ["en-GB", "de-DE"]), "en");
+  assert.equal(resolveLocale("system", ["fr-FR", "de-AT"]), "de");
+  assert.equal(resolveLocale("system", ["fr-FR", "es-ES"]), "en");
+  assert.equal(resolveLocale("system", []), "en");
+  assert.equal(resolveLocale("en", ["de-DE"]), "en");
+  assert.equal(resolveLocale("de", ["en-US"]), "de");
+  setLocale("system");
+  assert.equal(getLanguagePreference(), "system");
+  assert.equal(getLocale(), resolveLocale("system"));
+});
+
+test("browser modules share the same localization module instance", async () => {
+  const app = await readFile(new URL("../frontend/assets/app.js",import.meta.url),"utf8");
+  const positions = await readFile(new URL("../frontend/assets/positions.mjs",import.meta.url),"utf8");
+  assert.equal(app.match(/from "(\.\/i18n\.js[^\"]*)"/)[1], positions.match(/from "(\.\/i18n\.js[^\"]*)"/)[1]);
 });

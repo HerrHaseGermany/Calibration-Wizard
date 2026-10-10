@@ -6,6 +6,7 @@ from calibration_wizard.wizard import WIZARDS, ExtruderWizard, WizardError
 
 def test_wizards_follow_calibration_dependency_order():
     assert [wizard.id for wizard in WIZARDS] == [
+        "filament",
         "pid",
         "extruder",
         "bed_screws",

@@ -7,7 +7,7 @@
     <title>Klipper Tools</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=20260929-6" />
     <script>document.documentElement.dataset.theme=(localStorage.getItem("kcw-theme-mode")||"system")==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):localStorage.getItem("kcw-theme-mode");</script>
-    <link rel="stylesheet" href="assets/app.css?v=20261010-8" />
+    <link rel="stylesheet" href="assets/app.css?v=20261010-9" />
   </head>
   <body>
     <div class="shell">
@@ -22,8 +22,9 @@
           <button id="emergency-button" class="header-button emergency-button hidden" type="button" aria-label="" data-i18n-aria-label="ui.emergency_stop" title="" data-i18n-title="ui.stop_printer_immediately"><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 2h8l6 6v8l-6 6H8l-6-6V8zM12 7v6M12 17h.01"/></svg></span><span class="header-button-label"><span data-i18n="ui.emergency_stop"></span></span></button>
           <a id="mainsail-button" class="header-button" href="/" aria-label="" data-i18n-aria-label="ui.go_to_mainsail_dashboard" title="" data-i18n-title="ui.go_to_mainsail_dashboard"><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 19 5 5M5 5v10M5 5h10"/></svg></span><span class="header-button-label">Mainsail</span></a>
           <button id="home-button" class="header-button" type="button" aria-label="" data-i18n-aria-label="ui.back_to_tools_overview" title="" data-i18n-title="ui.back_to_tools_overview" aria-current="page" disabled><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 11 8-7 8 7v9h-6v-6h-4v6H4z"/></svg></span><span class="header-button-label"><span data-i18n="ui.overview"></span></span></button>
+          <button id="configuration-button" class="header-button icon-only" type="button" aria-label="" data-i18n-aria-label="configuration.title" title="" data-i18n-title="configuration.title" disabled><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3Z"/><circle cx="12" cy="12" r="3"/></svg></span></button>
           <button id="theme-button" class="header-button icon-only" type="button" aria-label="" data-i18n-aria-label="ui.change_color_scheme" title="" data-i18n-title="ui.change_color_scheme"><span id="theme-icon" aria-hidden="true">☀</span></button>
-          <label class="language-picker"><span class="sr-only"><span data-i18n="ui.language"></span></span><select id="language"><option value="de">Deutsch</option><option value="en">English</option></select></label>
+          <label class="language-picker"><span class="sr-only"><span data-i18n="ui.language"></span></span><select id="language"><option value="system" data-i18n="language.system"></option><option value="de">Deutsch</option><option value="en">English</option></select></label>
           <div class="connection"><i id="connection-dot"></i><span id="connection"><span data-i18n="ui.connecting"></span></span></div>
         </div>
       </header>
@@ -46,6 +47,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="assets/app.js?v=20261010-8"></script>
+    <script type="module" src="assets/app.js?v=20261010-9"></script>
   </body>
 </html>

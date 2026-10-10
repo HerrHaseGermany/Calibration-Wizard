@@ -1,5 +1,6 @@
-import { getLocale, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261010-8";
-import { adjustment, positionMap } from "./positions.mjs?v=20261010-8";
+import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261010-9";
+import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261010-9";
+import { adjustment, positionMap } from "./positions.mjs?v=20261010-9";
 
 await loadLocales();
 
@@ -12,6 +13,8 @@ const rail = document.querySelector("#rail");
 const workspace = document.querySelector(".workspace");
 const statusStrip = document.querySelector("#status-strip");
 const homeButton = document.querySelector("#home-button");
+const configurationButton = document.querySelector("#configuration-button");
+let navigationLocked = false;
 const emergencyButton = document.querySelector("#emergency-button");
 let printer = null;
 let session = null;
@@ -19,6 +22,7 @@ let wizards = [];
 let uiStep = 0;
 let activeWizard = null;
 let isOverview = true;
+let isConfigurationOverview = false;
 let resumeMode = false;
 let bootstrapping = true;
 const resumeStorageKey = "kcw-active-calibration";
@@ -62,17 +66,21 @@ function printerReadinessNotice() {
 }
 
 function setOverviewState(current) {
+  isConfigurationOverview = false;
   isOverview = current;
-  homeButton.disabled = current;
+  homeButton.disabled = current || navigationLocked;
   if (current) homeButton.setAttribute("aria-current", "page");
   else homeButton.removeAttribute("aria-current");
 }
 
 const language = document.querySelector("#language");
-language.value = getLocale();
-setLocale(getLocale());
+language.value = getLanguagePreference();
+setLocale(getLanguagePreference());
 language.addEventListener("change", () => { setLocale(language.value); applyTranslations(); });
 applyTranslations();
+window.addEventListener("languagechange", () => {
+  if (getLanguagePreference() === "system") { setLocale("system"); applyTranslations(); }
+});
 
 const themeButton = document.querySelector("#theme-button");
 const systemTheme = matchMedia("(prefers-color-scheme: light)");
@@ -130,22 +138,16 @@ function dashboard() {
   clearError();
   const ready = printerIsReady();
   const printBusy = ["printing", "paused"].includes(printer?.print_state);
-  const calibrationsReady = ready && !printBusy;
   const filamentReady = ready && printer?.print_state !== "printing";
   const card = (wizard) => {
-    const usable = !printBusy && (ready || wizard.id === "flow");
+    const usable = wizard.id === "filament" ? filamentReady : !printBusy && (ready || wizard.id === "flow");
+    const interaction = wizard.available && usable ? `data-wizard="${wizard.id}" role="button" tabindex="0"` : 'aria-disabled="true"';
+    const blocked = !wizard.available ? "unavailable" : usable ? "" : "printer-blocked";
     const configured = wizard.configuration?.point_count ? `<span class="configured">${msg("ui.value_points_detected", {value0: wizard.configuration.point_count})}</span>` : "";
-    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${calibrationsReady ? "" : "disabled"}>${msg("ui.configure")}</button>` : "";
-    if (wizard.available) {
-      const interaction = usable ? `data-wizard="${wizard.id}" role="button" tabindex="0"` : "";
-      return `<div class="calibration-card ${usable ? "" : "printer-blocked"}" ${interaction}>
-        <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p>
-        ${configured}<div class="card-buttons"><button class="card-start" type="button" ${usable ? "" : "disabled"}>${msg("ui.start_now_2")}</button>${setup}</div></div>`;
-    }
-    return `<div class="calibration-card unavailable">
+    const unavailable = !wizard.available ? `<span class="unavailable-reason">${wizard.availability_key ? msg(wizard.availability_key, wizard.availability_params) : msg("ui.not_available_on_this_printer")}</span><span class="planned">${msg("ui.not_configured")}</span>` : "";
+    return `<div class="calibration-card ${blocked}" ${interaction}>
       <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p>
-      <span class="unavailable-reason">${wizard.availability_key ? msg(wizard.availability_key, wizard.availability_params) : msg("ui.not_available_on_this_printer")}</span>
-      <div class="card-buttons">${setup}<span class="planned">${msg("ui.not_configured")}</span></div></div>`;
+      ${configured}${unavailable}</div>`;
   };
   const phases = [
     {title:msg("overview.phase_temperature"), ids:["pid","extruder"]},
@@ -157,18 +159,14 @@ function dashboard() {
     if(!entries.length)return "";
     return `<section class="calibration-phase"><div class="phase-heading"><h3>${phase.title}</h3></div><div class="calibration-grid">${entries.map(card).join("")}</div></section>`;
   }).join("");
-  const unavailable=wizards.filter(wizard=>!wizard.available);
+  const unavailable=wizards.filter(wizard=>!wizard.available && wizard.category !== "helper");
   const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h3>${msg("ui.unavailable")}</h3></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
   panel.innerHTML = `<h1>${msg("ui.tools")}</h1>
     ${printerReadinessNotice()}
     <div class="tool-groups">
       <section class="tool-group">
         <div class="calibration-grid">
-          <div class="calibration-card ${filamentReady ? "" : "printer-blocked"}">
-            <span class="card-icon">↕</span><h3>${msg("filament.title")}</h3>
-            <p>${msg("ui.heat_the_hotend_and_load_or_unload_filament_at_a")}</p>
-            <div class="card-buttons"><button id="open-filament" class="card-start" type="button" ${filamentReady ? "" : "disabled"}>${msg("ui.open")}</button></div>
-          </div>
+          ${card(wizards.find(wizard => wizard.id === "filament") || {id:"filament", available:true})}
         </div>
       </section>
       <section class="tool-group" aria-labelledby="calibration-title">
@@ -178,15 +176,36 @@ function dashboard() {
     </div>`;
   const openWizard = (card) => {
     const id = card.dataset.wizard;
-    if (cleanConfigWizards.has(id) && printer?.save_config_pending) pendingConfigPage(id);
+    if (id === "filament") filamentPage();
+    else if (cleanConfigWizards.has(id) && printer?.save_config_pending) pendingConfigPage(id);
     else if (id === "extruder") welcome(); else openGeneric(id);
   };
   document.querySelectorAll("[data-wizard]").forEach((card) => {
     card.addEventListener("click", () => openWizard(card));
     card.addEventListener("keydown", (event) => { if(event.target===card && (event.key === "Enter" || event.key === " ")){event.preventDefault();openWizard(card);} });
   });
-  document.querySelectorAll("[data-setup]").forEach((control) => control.addEventListener("click", async (event) => { event.stopPropagation(); try { await openSetup(control.dataset.setup); } catch(error) { showError(error); } }));
-  bind("open-filament", filamentPage);
+  updateNavigationAvailability();
+}
+
+function configurationOverview() {
+  setOverviewState(false);
+  isConfigurationOverview = true;
+  activeWizard = null;
+  session = null;
+  clearError();
+  const ready = printerIsReady() && !["printing", "paused"].includes(printer?.print_state);
+  panel.innerHTML = `<h1>${msg("configuration.title")}</h1><p class="lead">${msg("configuration.description")}</p>${printerReadinessNotice()}
+    <div class="calibration-grid">${wizards.filter(wizard => wizard.setup_available).map(wizard => `<div class="calibration-card ${ready ? "" : "printer-blocked"}" ${ready ? `data-setup="${wizard.id}" role="button" tabindex="0"` : 'aria-disabled="true"'}>
+      <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p></div>`).join("")}</div>`;
+  const open = async card => { try { await openSetup(card.dataset.setup); } catch(error) { showError(error); } };
+  panel.querySelectorAll("[data-setup]").forEach(card => {
+    card.addEventListener("click", () => open(card));
+    card.addEventListener("keydown", event => {
+      if (event.target === card && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault(); open(card);
+      }
+    });
+  });
 }
 
 function filamentPage() {
@@ -197,217 +216,7 @@ function filamentPage() {
   rail.classList.add("hidden");
   emergencyButton.classList.remove("hidden");
   updateCalibrationStatusStrip();
-  const presets = [["PLA", 210], ["PETG", 240], ["ABS", 255], ["ASA", 260], ["TPU", 220]];
-  const presetButtons = () => `<div class="filament-presets">${presets.map(([material, temperature]) => `<button class="button secondary" type="button" data-filament-preset="${temperature}" aria-pressed="${temperature === 210}">${msg("ui.value_value_c", {value2: material, value3: temperature})}</button>`).join("")}</div>`;
-  const temperatureInput = (id) => `<label>${msg("ui.target_temperature_c")}<input id="${id}" type="number" min="${Math.max(150, printer?.min_extrude_temp || 170)}" max="300" step="5" value="210"></label>`;
-  const bindPresets = (root, input) => {
-    const update = () => root.querySelectorAll("[data-filament-preset]").forEach(control => control.setAttribute("aria-pressed", Number(control.dataset.filamentPreset) === Number(input.value)));
-    root.querySelectorAll("[data-filament-preset]").forEach(control => control.addEventListener("click", () => { input.value = control.dataset.filamentPreset; update(); }));
-    input.addEventListener("input", update);
-  };
-  panel.innerHTML = `<span class="kicker">${msg("tools.helpers")}</span>
-    <h1>${msg("filament.title")}</h1>
-    <div class="actions">${button("filament-load", msg("filament.load"))} ${button("filament-unload", msg("filament.unload"))} ${button("filament-change", msg("filament.change"))}</div>`;
-  const request = async (action, payload) => {
-    const response = await fetch(new URL(`tools/filament/${action}`, base), {
-      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
-    });
-    const data = await response.json();
-    if (!response.ok) throw apiError(data);
-    return data;
-  };
-  const openFlow = async (mode) => {
-    let temperature = 210;
-    const speed = 5;
-    let direction = mode === "load" ? "load" : "unload";
-    let stage = "selection";
-    let startedHeating = false;
-    let token = null;
-    let disposed = false;
-    let timer = null;
-    const dialog = document.createElement("dialog");
-    dialog.className = "filament-dialog";
-    dialog.setAttribute("aria-labelledby", "filament-dialog-title");
-    dialog.innerHTML = `<h2 id="filament-dialog-title">${mode === "change" ? msg("filament.change") : mode === "load" ? msg("filament.load") : msg("filament.unload")}</h2>
-      <p id="filament-process" role="status"></p>
-      <div id="filament-selection">
-        <div id="filament-current-material"><h3>${mode === "change" ? msg("ui.from") : mode === "load" ? msg("ui.filament_to_load") : msg("ui.filament_to_unload")}</h3>${presetButtons()}${temperatureInput("filament-current-temperature")}</div>
-        <div id="filament-new-material" class="${mode === "change" ? "" : "hidden"}"><h3>${msg("ui.to")}</h3>${presetButtons()}${temperatureInput("filament-new-temperature")}</div>
-      </div>
-      <div id="filament-heating" class="hidden"><strong id="filament-live-temperature"></strong><progress id="filament-heat-progress" max="100" value="0"></progress></div>
-      <div id="filament-moving" class="hidden"><strong id="filament-move-label"></strong><progress id="filament-move-progress" max="100" value="0" aria-labelledby="filament-move-label"></progress></div>
-      <p id="filament-dialog-error" class="notice hidden" role="alert"></p>
-      <p id="filament-hot-note" class="hidden">${msg("ui.done_switches_the_hotend_off")}</p>
-      <div class="actions">${button("filament-confirm", msg("ui.heat_up"))} ${button("filament-keep-hot", msg("ui.finish_and_keep_hotend_on"), "secondary")} ${button("filament-close", msg("actions.cancel"), "secondary")}</div>`;
-    document.body.append(dialog);
-    const confirm = dialog.querySelector("#filament-confirm");
-    const close = dialog.querySelector("#filament-close");
-    const process = dialog.querySelector("#filament-process");
-    const errorBox = dialog.querySelector("#filament-dialog-error");
-    const heating = dialog.querySelector("#filament-heating");
-    const moving = dialog.querySelector("#filament-moving");
-    const moveLabel = dialog.querySelector("#filament-move-label");
-    const moveProgress = dialog.querySelector("#filament-move-progress");
-    const selection = dialog.querySelector("#filament-selection");
-    const currentMaterial = dialog.querySelector("#filament-current-material");
-    const currentTemperature = dialog.querySelector("#filament-current-temperature");
-    const newMaterial = dialog.querySelector("#filament-new-material");
-    const newTemperature = dialog.querySelector("#filament-new-temperature");
-    const keepHot = dialog.querySelector("#filament-keep-hot");
-    keepHot.classList.add("hidden");
-    bindPresets(currentMaterial, currentTemperature);
-    bindPresets(newMaterial, newTemperature);
-    homeButton.disabled = true;
-    const showFailure = (error) => {
-      stage = "error";
-      confirm.disabled = true;
-      close.disabled = false;
-      keepHot.classList.add("hidden");
-      setText(errorBox, () => error.message);
-      errorBox.classList.remove("hidden");
-
-    };
-    const poll = async () => {
-      if (disposed || !["heating", "ready"].includes(stage)) return;
-      try {
-        const response = await fetch(new URL("printer", base));
-        if (!response.ok) throw new LocalizedError("ui.could_not_load_printer_status");
-        const current = await response.json();
-        if (disposed || !["heating", "ready"].includes(stage)) return;
-        const usable = current.connected && current.state === "ready" && current.print_state !== "printing";
-        const reached = usable && current.can_extrude && current.temperature >= current.min_extrude_temp && current.temperature >= temperature - 2 && Math.abs(current.target - temperature) < 0.1;
-        stage = reached ? "ready" : "heating";
-        confirm.disabled = !reached;
-        setText(process, () => reached ? (direction === "load" ? t("ui.temperature_reached_insert_filament_and_confirm_loading") : t("ui.temperature_reached_confirm_unloading")) : t("ui.heating_hotend"));
-        setText(dialog.querySelector("#filament-live-temperature"), () => t("ui.value_value_c_2", {value0: current.temperature.toFixed(1), value1: temperature}));
-        dialog.querySelector("#filament-heat-progress").value = Math.min(100, Math.max(0, current.temperature / temperature * 100));
-        if (!usable) throw new LocalizedError("ui.klipper_must_be_ready_for_a_filament_change");
-
-        timer = setTimeout(poll, 1000);
-      } catch (error) { if (!disposed) showFailure(error); }
-    };
-    const pollMovement = async () => {
-      if (disposed || stage !== "running") return;
-      try {
-        const response = await fetch(new URL("tools/filament/progress", base));
-        if (!response.ok) throw new LocalizedError("errors.progress_load");
-        const current = await response.json();
-        if (disposed || stage !== "running") return;
-        if (current.operation_id === token) {
-          moveProgress.value = current.percent;
-          setText(moveLabel, () => `${current.percent} %`);
-        }
-      } catch {
-        // Losing progress updates must not unlock controls while the printer is moving.
-        setText(moveLabel, () => t("ui.waiting_for_movement_progress"));
-
-      }
-      if (!disposed && stage === "running") timer = setTimeout(pollMovement, 500);
-    };
-    const startHeating = async () => {
-      stage = "heating";
-      confirm.disabled = true;
-      close.disabled = true;
-      setText(confirm, () => t("ui.confirm_and_start"));
-      setText(process, () => t("ui.heating_hotend"));
-      heating.classList.remove("hidden");
-      moving.classList.add("hidden");
-      selection.classList.add("hidden");
-
-      try {
-        startedHeating = true;
-        const data = await request("heat", {temperature, direction});
-        token = data.confirmation_token;
-        close.disabled = false;
-        await poll();
-      } catch (error) { showFailure(error); }
-    };
-    const closeDialog = async (leaveHeaterOn = false) => {
-      if (close.disabled) return;
-      close.disabled = true;
-      clearTimeout(timer);
-      if (startedHeating && !leaveHeaterOn) {
-        stage = "closing";
-        try { await request("heat", {temperature: 0}); }
-        catch (error) { showFailure(error); return; }
-      }
-      disposed = true;
-      dialog.close();
-      dialog.remove();
-      homeButton.disabled = false;
-    };
-    close.addEventListener("click", () => closeDialog());
-    dialog.addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
-    keepHot.addEventListener("click", () => {
-      if (stage === "complete") closeDialog(true);
-    });
-    confirm.addEventListener("click", async () => {
-      if (confirm.disabled) return;
-      if (stage === "selection") {
-        if (!currentTemperature.reportValidity() || (mode === "change" && !newTemperature.reportValidity())) return;
-        temperature = Number(currentTemperature.value);
-        await startHeating();
-        return;
-      }
-      if (stage === "swap") {
-        if (!newTemperature.reportValidity()) return;
-        temperature = Number(newTemperature.value);
-        direction = "load";
-        await startHeating();
-        return;
-      }
-      if (stage !== "ready") return;
-      stage = "running";
-      clearTimeout(timer);
-      confirm.disabled = true;
-      close.disabled = true;
-      setText(process, () => t("ui.moving_filament"));
-      heating.classList.add("hidden");
-      moving.classList.remove("hidden");
-      moveProgress.value = 0;
-      setText(moveLabel, () => "0 %");
-
-      try {
-        const movement = request(direction, {speed, confirmation_token: token});
-        pollMovement();
-        await movement;
-        clearTimeout(timer);
-        moveProgress.value = 100;
-        setText(moveLabel, () => "100 %");
-        heating.classList.add("hidden");
-        if (mode === "change" && direction === "unload") {
-          stage = "swap";
-          setText(process, () => t("ui.insert_the_new_filament_and_confirm_the_new_temperature"));
-          selection.classList.remove("hidden");
-          currentMaterial.classList.add("hidden");
-          setText(confirm, () => t("ui.heat_for_new_material"));
-          confirm.disabled = false;
-        } else {
-          stage = "complete";
-          setText(process, () => direction === "load" ? t("ui.filament_loaded") : t("ui.filament_unloaded"));
-          confirm.classList.add("hidden");
-          setText(close, () => t("actions.done"));
-          close.classList.remove("secondary");
-          keepHot.classList.remove("hidden");
-          dialog.querySelector("#filament-hot-note").classList.remove("hidden");
-        }
-        close.disabled = false;
-
-      } catch (error) { showFailure(error); }
-    });
-
-    dialog.showModal();
-  };
-  const bindTool = (id, handler) => document.querySelector(`#${id}`).addEventListener("click", async (event) => {
-    const control = event.currentTarget;
-    control.disabled = true;
-    try { await handler(); }
-    catch (error) { showError(error); }
-    finally { control.disabled = false; }
-  });
-  bindTool("filament-load", () => openFlow("load"));
-  bindTool("filament-unload", () => openFlow("unload"));
-  bindTool("filament-change", () => openFlow("change"));
+  renderFilamentPage({panel, base, getPrinter: () => printer, setNavigationLocked, button, showError, t, msg, setText, apiError, LocalizedError});
 }
 
 async function returnHome() {
@@ -420,6 +229,24 @@ async function returnHome() {
   session = null;
   dashboard();
 }
+
+function updateNavigationAvailability() {
+  configurationButton.disabled = navigationLocked || !printerIsReady() || ["printing", "paused"].includes(printer?.print_state);
+}
+
+function setNavigationLocked(locked) {
+  navigationLocked = locked;
+  homeButton.disabled = locked || isOverview;
+  updateNavigationAvailability();
+}
+
+configurationButton.addEventListener("click", async () => {
+  if (configurationButton.disabled) return;
+  configurationButton.disabled = true;
+  try { await returnHome(); configurationOverview(); }
+  catch(error) { showError(error); }
+  finally { updateNavigationAvailability(); }
+});
 
 homeButton.addEventListener("click",async(event)=>{
   event.currentTarget.disabled=true;
@@ -446,7 +273,7 @@ emergencyButton.addEventListener("click", async () => {
 });
 
 function cardIcon(id) {
-  return ({extruder:"E", pid:"°", flow:"%", pressure_advance:"PA", probe_offset:"Z", screws_tilt:"↻", bed_screws:"⌁", z_tilt:"Z²", quad_gantry_level:"Q", bed_mesh:"▦", input_shaper:"≈"})[id] || "+";
+  return ({filament:"↕", extruder:"E", pid:"°", flow:"%", pressure_advance:"PA", probe_offset:"Z", screws_tilt:"↻", bed_screws:"⌁", z_tilt:"Z²", quad_gantry_level:"Q", bed_mesh:"▦", input_shaper:"≈"})[id] || "+";
 }
 
 function showError(message) {
@@ -1105,13 +932,17 @@ function updateStatus(data) {
   const previousReadiness = printerReadinessKey();
   const previousSessionState = session?.state;
   printer = data.printer;
+  updateNavigationAvailability();
   if (activeWizard === "extruder" && data.session) session = data.session;
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
   updateCalibrationStatusStrip();
   connection.className = `connection ${printer.connected ? "online" : "offline"}`;
   setText(document.querySelector("#connection"), () => printer.connected ? t("ui.printer_connected") : t("ui.printer_offline"));
   if (!bootstrapping && pendingResolution() && continueAfterPendingResolution()) return;
-  if (!bootstrapping && isOverview && previousReadiness !== printerReadinessKey()) dashboard();
+  if (!bootstrapping && previousReadiness !== printerReadinessKey()) {
+    if (isOverview) dashboard();
+    else if (isConfigurationOverview) configurationOverview();
+  }
   if (resumeMode && session?.state !== previousSessionState) {
     if (activeWizard === "extruder") renderResumedExtruder(); else renderResumedGeneric(activeWizard);
   }
@@ -1126,7 +957,9 @@ function connect() {
     connection.className = "connection offline";
     setText(document.querySelector("#connection"), () => t("ui.reconnecting"));
     if (printer) printer = {...printer, connected:false, state:"disconnected", state_message:""};
+    updateNavigationAvailability();
     if (!bootstrapping && isOverview) dashboard();
+    else if (!bootstrapping && isConfigurationOverview) configurationOverview();
     setTimeout(connect, 2000);
   };
 }

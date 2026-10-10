@@ -27,7 +27,7 @@ A safety-first, modular calibration center for Klipper printers. It guides users
 - Hardware-independent mock printer.
 - Standalone service and UI; no patches to Klipper, Moonraker, Mainsail, or Fluidd.
 - Systemd, nginx `/calibration/`, and current Moonraker `git_repo` Update Manager integration.
-- German and English UI, selected from the browser language with a persistent manual switch.
+- German and English UI, selected automatically from the preferred browser languages (System / Browser), with a persistent manual override.
 
 ## Requirements
 

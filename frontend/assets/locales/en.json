@@ -567,5 +567,10 @@
   "wizards.screws_tilt.description": "Automatically determine direction and adjustment for every bed screw.",
   "wizards.screws_tilt.name": "Bed screws",
   "wizards.z_tilt.description": "Level a gantry with two or more independently driven Z motors.",
-  "wizards.z_tilt.name": "Z-Tilt"
+  "wizards.z_tilt.name": "Z-Tilt",
+  "wizards.filament.name": "Load / unload filament",
+  "wizards.filament.description": "Heat the hotend and load or unload filament at a controlled speed.",
+  "configuration.title": "Configure calibrations",
+  "configuration.description": "Select a calibration to configure its printer geometry and settings.",
+  "language.system": "System / browser"
 }
