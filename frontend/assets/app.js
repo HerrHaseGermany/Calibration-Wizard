@@ -1,4 +1,4 @@
-import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261010-9";
+import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261011-1";
 import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261010-9";
 import { adjustment, positionMap } from "./positions.mjs?v=20261010-9";
 
@@ -216,7 +216,7 @@ function filamentPage() {
   rail.classList.add("hidden");
   emergencyButton.classList.remove("hidden");
   updateCalibrationStatusStrip();
-  renderFilamentPage({panel, base, getPrinter: () => printer, setNavigationLocked, button, showError, t, msg, setText, apiError, LocalizedError});
+  renderFilamentPage({panel, base, getPrinter: () => printer, setNavigationLocked, onCancel: returnHome, button, showError, t, msg, setText, apiError, LocalizedError});
 }
 
 async function returnHome() {

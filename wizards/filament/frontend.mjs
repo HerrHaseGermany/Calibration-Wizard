@@ -1,4 +1,4 @@
-export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked, button, showError, t, msg, setText, apiError, LocalizedError}) {
+export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked, onCancel, button, showError, t, msg, setText, apiError, LocalizedError}) {
   const presets = [["PLA", 210], ["PETG", 240], ["ABS", 255], ["ASA", 260], ["TPU", 220]];
   const presetButtons = () => `<div class="filament-presets">${presets.map(([material, temperature]) => `<button class="button secondary" type="button" data-filament-preset="${temperature}" aria-pressed="${temperature === 210}">${msg("ui.value_value_c", {value2: material, value3: temperature})}</button>`).join("")}</div>`;
   const temperatureInput = (id) => `<label>${msg("ui.target_temperature_c")}<input id="${id}" type="number" min="${Math.max(150, getPrinter()?.min_extrude_temp || 170)}" max="300" step="5" value="210"></label>`;
@@ -9,7 +9,7 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
   };
   panel.innerHTML = `<span class="kicker">${msg("tools.helpers")}</span>
     <h1>${msg("filament.title")}</h1>
-    <div class="actions">${button("filament-load", msg("filament.load"))} ${button("filament-unload", msg("filament.unload"))} ${button("filament-change", msg("filament.change"))}</div>`;
+    <div class="actions">${button("filament-load", msg("filament.load"))} ${button("filament-unload", msg("filament.unload"))} ${button("filament-change", msg("filament.change"))} ${button("filament-cancel", msg("actions.cancel"), "secondary")}</div>`;
   const request = async (action, payload) => {
     const response = await fetch(new URL(`tools/filament/${action}`, base), {
       method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
@@ -210,4 +210,5 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
   bindTool("filament-load", () => openFlow("load"));
   bindTool("filament-unload", () => openFlow("unload"));
   bindTool("filament-change", () => openFlow("change"));
+  bindTool("filament-cancel", onCancel);
 }
