@@ -193,16 +193,21 @@ class MoonrakerPrinter(PrinterAdapter):
         snapshot = await self.snapshot()
         if not snapshot.connected or snapshot.state != "ready" or not snapshot.can_extrude:
             raise PrinterError("Klipper is not ready for a safe extrusion")
+        if snapshot.print_state in {"printing", "paused"} or snapshot.extruder != extruder:
+            raise PrinterError("Active extruder changed or printer is busy")
+        if not math.isfinite(distance) or not math.isfinite(speed) or speed <= 0:
+            raise PrinterError("Invalid extrusion distance or speed")
         chunk = min(snapshot.max_extrude_only_distance, 50.0)
-        if chunk <= 0:
+        if not math.isfinite(chunk) or chunk <= 0:
             raise PrinterError("Invalid max_extrude_only_distance reported by Klipper")
         moves: list[float] = []
-        remaining = distance
+        remaining = abs(distance)
         while remaining > 1e-6:
             moves.append(min(chunk, remaining))
             remaining -= moves[-1]
         feedrate = speed * 60
-        move_gcode = "\n".join(f"G1 E{part:.5f} F{feedrate:.1f}" for part in moves)
+        direction = -1 if distance < 0 else 1
+        move_gcode = "\n".join(f"G1 E{direction * part:.5f} F{feedrate:.1f}" for part in moves)
         script = (
             "SAVE_GCODE_STATE NAME=calibration_wizard_extrusion\n"
             "M83\n"
@@ -210,7 +215,7 @@ class MoonrakerPrinter(PrinterAdapter):
             "M400\n"
             "RESTORE_GCODE_STATE NAME=calibration_wizard_extrusion MOVE=0"
         )
-        await self._gcode(script)
+        await self._gcode(script, long_running=True)
 
     async def set_rotation_distance(self, extruder: str, distance: float) -> None:
         if not math.isfinite(distance) or distance <= 0:

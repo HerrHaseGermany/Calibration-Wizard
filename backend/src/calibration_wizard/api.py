@@ -15,6 +15,8 @@ from .configuration import KlipperConfigRepository
 from .models import (
     CalibrationActionRequest,
     CalibrationStartRequest,
+    FilamentHeatRequest,
+    FilamentMoveRequest,
     HeatRequest,
     MeasurementRequest,
     SaveRequest,
@@ -23,7 +25,7 @@ from .models import (
     StartRequest,
     WizardState,
 )
-from .printer import MockPrinter, MoonrakerPrinter, PrinterAdapter
+from .printer import MockPrinter, MoonrakerPrinter, PrinterAdapter, PrinterError
 from .settings import Settings
 from .setup import CalibrationSetupManager
 from .wizard import WIZARDS, ExtruderWizard, WizardError
@@ -53,6 +55,7 @@ def create_app(
     wizard = ExtruderWizard(printer, config)
     calibrations = CalibrationManager(printer, config)
     setup_manager = CalibrationSetupManager(printer, config)
+    filament_lock = asyncio.Lock()
 
     app = FastAPI(
         title="Klipper Calibration Wizard",
@@ -130,6 +133,60 @@ def create_app(
     async def list_wizards():
         return await calibrations.definitions(WIZARDS)
 
+    async def require_filament_ready():
+        snapshot = await printer.snapshot()
+        if not snapshot.connected or snapshot.state != "ready":
+            raise WizardError("Klipper muss für den Filamentwechsel bereit sein.")
+        if snapshot.print_state in {"printing", "paused"}:
+            raise WizardError("Filamentwechsel ist während eines Drucks oder einer Pause gesperrt.")
+        terminal = {"COMPLETE", "CANCELLED", "ERROR"}
+        sessions = [wizard.session, *calibrations.sessions.values()]
+        if any(item and item.state not in terminal for item in sessions):
+            raise WizardError("Beende zuerst die laufende Kalibrierung.")
+        return snapshot
+
+    @app.post("/api/tools/filament/heat")
+    async def filament_heat(payload: FilamentHeatRequest, request: Request):
+        _check_same_origin(request)
+        if filament_lock.locked():
+            raise WizardError("Filamentbewegung läuft bereits.")
+        async with filament_lock:
+            snapshot = await require_filament_ready()
+            if payload.temperature and payload.temperature < snapshot.min_extrude_temp:
+                raise WizardError("Zieltemperatur liegt unter der Mindest-Extrusionstemperatur.")
+            try:
+                config_status = await printer.query_objects({"configfile": ["settings"]})
+                extruder_settings = (
+                    config_status.get("configfile", {})
+                    .get("settings", {})
+                    .get(snapshot.extruder, {})
+                )
+                maximum = float(extruder_settings.get("max_temp", 300))
+                if payload.temperature and payload.temperature >= maximum:
+                    raise WizardError("Zieltemperatur muss unter Klippers max_temp liegen.")
+                await printer.heat(snapshot.extruder, payload.temperature)
+            except PrinterError as exc:
+                raise WizardError(str(exc)) from exc
+        return {"status": "heating" if payload.temperature else "heater_off"}
+
+    @app.post("/api/tools/filament/{direction}")
+    async def filament_move(direction: str, payload: FilamentMoveRequest, request: Request):
+        _check_same_origin(request)
+        if direction not in {"load", "unload"}:
+            raise HTTPException(status_code=404, detail="Unknown filament action")
+        if filament_lock.locked():
+            raise WizardError("Filamentbewegung läuft bereits.")
+        async with filament_lock:
+            snapshot = await require_filament_ready()
+            if not snapshot.can_extrude or snapshot.temperature < snapshot.min_extrude_temp:
+                raise WizardError("Das Hotend hat die Mindest-Extrusionstemperatur nicht erreicht.")
+            distance = payload.distance if direction == "load" else -payload.distance
+            try:
+                await printer.extrude(snapshot.extruder, distance, payload.speed)
+            except PrinterError as exc:
+                raise WizardError(str(exc)) from exc
+        return {"status": "complete", "direction": direction, "distance": payload.distance}
+
     @app.get("/api/wizards/extruder")
     async def extruder_status():
         definition = next(item for item in WIZARDS if item.id == "extruder")
@@ -138,6 +195,8 @@ def create_app(
     @app.post("/api/wizards/extruder/start")
     async def start(payload: StartRequest, request: Request):
         _check_same_origin(request)
+        if filament_lock.locked():
+            raise WizardError("Filamentbewegung läuft bereits.")
         return await wizard.start(payload.mark_distance, payload.commanded_extrusion)
 
     @app.post("/api/wizards/extruder/heat")
@@ -202,6 +261,8 @@ def create_app(
     @app.post("/api/wizards/{wizard_id}/start")
     async def calibration_start(wizard_id: str, payload: CalibrationStartRequest, request: Request):
         _check_same_origin(request)
+        if filament_lock.locked():
+            raise WizardError("Filamentbewegung läuft bereits.")
         return await calibrations.start(wizard_id, payload.options)
 
     @app.post("/api/wizards/{wizard_id}/action")

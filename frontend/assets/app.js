@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261006-2";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261010-2";
 import { adjustment, positionMap } from "./positions.mjs?v=20261006-2";
 
 const base = new URL("./api/", window.location.href);
@@ -53,7 +53,7 @@ function printerReadinessNotice() {
     shutdown: "Klipper befindet sich im Shutdown-Zustand. Prüfe den Drucker und die Fehlermeldung in Mainsail. Führe einen Firmware-Neustart erst aus, wenn die Ursache behoben ist.",
     error: "Klipper meldet einen Fehler. Prüfe die Fehlermeldung in Mainsail und behebe die Ursache, bevor du fortfährst.",
     startup: "Klipper startet gerade. Die Kalibrierungen werden automatisch freigegeben, sobald die Firmware bereit ist.",
-    disconnected: "Der Calibration Wizard kann Klipper derzeit nicht erreichen. Prüfe die Verbindung und den Zustand in Mainsail.",
+    disconnected: "Klipper Tools kann Klipper derzeit nicht erreichen. Prüfe die Verbindung und den Zustand in Mainsail.",
   }[state] || `Klipper ist momentan nicht bereit (Zustand: ${esc(state)}). Prüfe den Drucker in Mainsail.`;
   const detail = printer?.state_message ? `<p class="printer-state-message" data-no-i18n>${esc(printer.state_message)}</p>` : "";
   return `<aside class="printer-readiness" role="alert"><div><strong>Klipper ist nicht bereit</strong><p>${copy}</p>${detail}</div><a class="button secondary" href="/">Zu Mainsail</a></aside>`;
@@ -161,13 +161,28 @@ function dashboard() {
   const cards = phases.map(phase=>{
     const entries=phase.ids.map(id=>wizards.find(wizard=>wizard.id===id)).filter(wizard=>wizard?.available);
     if(!entries.length)return "";
-    return `<section class="calibration-phase"><div class="phase-heading"><h2>${phase.title}</h2></div><div class="calibration-grid">${entries.map(card).join("")}</div></section>`;
+    return `<section class="calibration-phase"><div class="phase-heading"><h3>${phase.title}</h3></div><div class="calibration-grid">${entries.map(card).join("")}</div></section>`;
   }).join("");
   const unavailable=wizards.filter(wizard=>!wizard.available);
-  const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h2>Nicht verfügbar</h2></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
-  panel.innerHTML = `<span class="kicker">Kalibrierzentrale</span>
+  const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h3>Nicht verfügbar</h3></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
+  panel.innerHTML = `<h1>Tools</h1>
     ${printerReadinessNotice()}
-    <div class="calibration-phases">${cards}${unavailableCards}</div>`;
+    <div class="tool-groups">
+      <section class="tool-group" aria-labelledby="calibration-title">
+        <h2 id="calibration-title">Kalibrierung</h2>
+        <div class="calibration-phases">${cards}${unavailableCards}</div>
+      </section>
+      <section class="tool-group" aria-labelledby="quality-of-life-title">
+        <h2 id="quality-of-life-title">Komfortfunktionen</h2>
+        <div class="calibration-grid">
+          <div class="calibration-card">
+            <span class="card-icon">↕</span><h3>Filament laden / entladen</h3>
+            <p>Hotend aufheizen und Filament kontrolliert laden oder entladen.</p>
+            <div class="card-buttons"><button id="open-filament" class="card-start" type="button" ${ready ? "" : "disabled"}>Öffnen →</button></div>
+          </div>
+        </div>
+      </section>
+    </div>`;
   const openWizard = (card) => {
     const id = card.dataset.wizard;
     if (cleanConfigWizards.has(id) && printer?.save_config_pending) pendingConfigPage(id);
@@ -178,6 +193,65 @@ function dashboard() {
     card.addEventListener("keydown", (event) => { if(event.target===card && (event.key === "Enter" || event.key === " ")){event.preventDefault();openWizard(card);} });
   });
   document.querySelectorAll("[data-setup]").forEach((control) => control.addEventListener("click", async (event) => { event.stopPropagation(); try { await openSetup(control.dataset.setup); } catch(error) { showError(error.message); } }));
+  bind("open-filament", filamentPage);
+}
+
+function filamentPage() {
+  clearError();
+  session = null;
+  activeWizard = "filament";
+  setOverviewState(false);
+  rail.classList.add("hidden");
+  emergencyButton.classList.remove("hidden");
+  updateCalibrationStatusStrip();
+  panel.innerHTML = `<span class="kicker">Komfortfunktionen</span>
+    <h1>Filament laden / entladen</h1>
+    <p class="lead">Führe das Filament zum Laden in den Extruder ein. Wähle eine Temperatur passend zum Material und warte, bis das Hotend heiß ist.</p>
+    <p>Die Länge hängt vom Filamentweg ab. Bei Bedarf kannst du den Vorgang wiederholen. Das Hotend bleibt anschließend heiß, bis du die Heizung ausschaltest.</p>
+    <div class="setup-grid">
+      <label>Zieltemperatur (°C)<input id="filament-temperature" type="number" min="${Math.max(150, printer?.min_extrude_temp || 170)}" max="300" step="5" value="${Math.min(300, Math.max(200, printer?.min_extrude_temp || 170))}"></label>
+      <label>Filamentlänge (mm)<input id="filament-distance" type="number" min="1" max="500" value="50"></label>
+      <label>Geschwindigkeit (mm/s)<input id="filament-speed" type="number" min="0.1" max="5" step="0.1" value="2"></label>
+    </div>
+    <div class="actions">${button("filament-heat", "Aufheizen")} ${button("filament-off", "Heizung ausschalten", "secondary")}</div>
+    <div class="actions">${button("filament-load", "Filament laden")} ${button("filament-unload", "Filament entladen", "secondary")}</div>
+    <p id="filament-result" role="status"></p>
+    <div class="actions">${button("filament-back", "Zur Übersicht", "secondary")}</div>`;
+  let busy = false;
+  const run = async (action) => {
+    if (busy) return;
+    const heating = action === "heat" || action === "off";
+    const inputs = heating ? (action === "off" ? [] : ["temperature"]) : ["distance", "speed"];
+    if (inputs.some(name => !document.querySelector(`#filament-${name}`).reportValidity())) return;
+    busy = true;
+    const controls = [...panel.querySelectorAll("button"), homeButton];
+    controls.forEach(control => { control.disabled = true; });
+    const result = document.querySelector("#filament-result");
+    result.textContent = heating ? "Temperatur wird gesetzt…" : "Filamentbewegung läuft…";
+    try {
+      const payload = heating
+        ? {temperature: action === "off" ? 0 : Number(document.querySelector("#filament-temperature").value)}
+        : {distance: Number(document.querySelector("#filament-distance").value), speed: Number(document.querySelector("#filament-speed").value)};
+      const response = await fetch(new URL(`tools/filament/${heating ? "heat" : action}`, base), {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Bitte prüfe die Eingabewerte.");
+      result.textContent = action === "off" ? "Heizung ausgeschaltet." : action === "heat" ? "Warte, bis die Zieltemperatur erreicht ist. Starte dann Laden oder Entladen." : action === "load" ? "Filament geladen." : "Filament entladen.";
+    } catch (error) {
+      result.textContent = "";
+      showError(error.message);
+    } finally {
+      busy = false;
+      controls.forEach(control => { control.disabled = false; });
+      localize(panel);
+    }
+  };
+  bind("filament-heat", () => run("heat"));
+  bind("filament-off", () => run("off"));
+  bind("filament-load", () => run("load"));
+  bind("filament-unload", () => run("unload"));
+  bind("filament-back", dashboard);
 }
 
 async function returnHome() {
@@ -388,7 +462,7 @@ function updateCalibrationStatusStrip() {
     document.querySelector("#status-label-2").textContent = "Heizbett Ist";
     document.querySelector("#temperature").textContent = `${printer?.temperature?.toFixed(1) ?? "—"} °C`;
     document.querySelector("#target").textContent = `${printer?.bed_temperature?.toFixed(1) ?? "—"} °C`;
-  } else if (activeWizard === "extruder") {
+  } else if (activeWizard === "extruder" || activeWizard === "filament") {
     statusStrip.classList.remove("hidden");
     document.querySelector("#status-label-1").textContent = "Hotend Ist";
     document.querySelector("#status-label-2").textContent = "Hotend Ziel";

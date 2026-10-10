@@ -57,7 +57,7 @@ def test_updates_an_existing_calibration_entry(tmp_path: Path):
 
     values = json.loads(navigation.read_text(encoding="utf-8"))
     assert len(values) == 1
-    assert values[0]["title"] == "Calibration"
+    assert values[0]["title"] == "Tools"
     assert values[0]["position"] == 45
 
 

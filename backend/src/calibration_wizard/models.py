@@ -113,6 +113,15 @@ class HeatRequest(BaseModel):
     temperature: float
 
 
+class FilamentHeatRequest(BaseModel):
+    temperature: float = Field(ge=0, le=300, allow_inf_nan=False)
+
+
+class FilamentMoveRequest(BaseModel):
+    distance: float = Field(default=50, gt=0, le=500, allow_inf_nan=False)
+    speed: float = Field(default=2, gt=0, le=5, allow_inf_nan=False)
+
+
 class MeasurementRequest(BaseModel):
     remaining_distance: float
 

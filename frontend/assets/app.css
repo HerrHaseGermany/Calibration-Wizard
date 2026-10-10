@@ -125,7 +125,9 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,107,44
 .calibration-phases { display:grid; gap:34px; margin-top:30px; }
 .calibration-phase { display:grid; gap:14px; }
 .phase-heading { padding-bottom:12px; border-bottom:1px solid var(--border); }
-.phase-heading h2 { margin:0; font-size:22px; letter-spacing:-.02em; }
+.phase-heading h3 { margin:0; font-size:22px; letter-spacing:-.02em; }
+.tool-groups { display:grid; gap:40px; }
+.tool-group > h2 { margin:0; }
 .calibration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .calibration-card { min-height: 190px; padding: 22px; border: 1px solid var(--border); border-radius: 15px; background: var(--card); display: flex; flex-direction: column; align-items: flex-start; text-align: left; color: var(--text); }
 .calibration-card { transition: .18s ease; }

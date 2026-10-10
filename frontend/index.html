@@ -4,24 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0b1017" />
-    <title>Klipper Calibration Wizard</title>
+    <title>Klipper Tools</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=20260929-6" />
     <script>document.documentElement.dataset.theme=(localStorage.getItem("kcw-theme-mode")||"system")==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):localStorage.getItem("kcw-theme-mode");</script>
-    <link rel="stylesheet" href="assets/app.css?v=20261006-1" />
+    <link rel="stylesheet" href="assets/app.css?v=20261010-1" />
   </head>
   <body>
     <div class="shell">
       <header class="topbar">
-        <a class="brand" href="./" aria-label="Calibration Wizard home">
+        <a class="brand" href="./" aria-label="Klipper Tools home">
           <span class="brand-mark" aria-hidden="true">
             <img src="assets/logo.svg?v=20260929-6" alt="" />
           </span>
-          <span><strong>Calibration</strong><small>Wizard</small></span>
+          <span><strong>Tools</strong><small>Klipper</small></span>
         </a>
         <div class="top-actions">
           <button id="emergency-button" class="header-button emergency-button hidden" type="button" aria-label="NOT-AUS" title="Drucker sofort anhalten"><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 2h8l6 6v8l-6 6H8l-6-6V8zM12 7v6M12 17h.01"/></svg></span><span class="header-button-label">NOT-AUS</span></button>
           <a id="mainsail-button" class="header-button" href="/" aria-label="Zum Mainsail-Dashboard" title="Zum Mainsail-Dashboard"><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M19 19 5 5M5 5v10M5 5h10"/></svg></span><span class="header-button-label">Mainsail</span></a>
-          <button id="home-button" class="header-button" type="button" aria-label="Zur Kalibrierübersicht" title="Zur Kalibrierübersicht" aria-current="page" disabled><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 11 8-7 8 7v9h-6v-6h-4v6H4z"/></svg></span><span class="header-button-label">Übersicht</span></button>
+          <button id="home-button" class="header-button" type="button" aria-label="Zur Werkzeugübersicht" title="Zur Werkzeugübersicht" aria-current="page" disabled><span class="header-button-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 11 8-7 8 7v9h-6v-6h-4v6H4z"/></svg></span><span class="header-button-label">Übersicht</span></button>
           <button id="theme-button" class="header-button icon-only" type="button" aria-label="Farbschema wechseln" title="Farbschema wechseln"><span id="theme-icon" aria-hidden="true">☀</span></button>
           <label class="language-picker"><span class="sr-only">Language</span><select id="language"><option value="de" data-no-i18n>Deutsch</option><option value="en" data-no-i18n>English</option></select></label>
           <div class="connection"><i id="connection-dot"></i><span id="connection">Connecting</span></div>
@@ -46,6 +46,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="assets/app.js?v=20261006-2"></script>
+    <script type="module" src="assets/app.js?v=20261010-2"></script>
   </body>
 </html>
