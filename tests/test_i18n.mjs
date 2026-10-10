@@ -29,6 +29,17 @@ test("English covers manual screws, setup, inline fragments and validation", () 
   assert.equal(translate("mm. Übernimm den neuen Wert in dein Filamentprofil im Slicer und drucke zur Kontrolle erneut."), "mm. Apply the new value to your filament profile in the slicer and print again to verify it.");
 });
 
+test("helper category and filament process labels follow the selected language", () => {
+  setLocale("en");
+  assert.equal(translate("Helfer"), "Helper");
+  assert.equal(translate("Filament wechseln"), "Change filament");
+  assert.equal(translate("Bestätigen und starten"), "Confirm and start");
+  assert.equal(translate("Neues Material aufheizen"), "Heat for new material");
+  setLocale("de");
+  assert.equal(translate("Helper"), "Helfer");
+  assert.equal(translate("Change filament"), "Filament wechseln");
+});
+
 test("translation never changes parts of words or Klipper identifiers", () => {
   setLocale("de");
   assert.equal(translate("Heater Heatmap rotation_distance SAVE_CONFIG"), "Heizer Heatmap rotation_distance SAVE_CONFIG");

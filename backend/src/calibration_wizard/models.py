@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -115,10 +115,11 @@ class HeatRequest(BaseModel):
 
 class FilamentHeatRequest(BaseModel):
     temperature: float = Field(ge=0, le=300, allow_inf_nan=False)
+    direction: Literal["load", "unload"] = "load"
 
 
 class FilamentMoveRequest(BaseModel):
-    distance: float = Field(default=50, gt=0, le=500, allow_inf_nan=False)
+    confirmation_token: str
     speed: float = Field(default=2, gt=0, le=5, allow_inf_nan=False)
 
 

@@ -10,7 +10,7 @@ A safety-first, modular calibration center for Klipper printers. It guides users
 
 ## Features
 
-- Quality of life tools: heat the hotend, load or unload filament with adjustable length and speed, and switch the heater off. Filament movement is blocked while cold, printing, paused, or calibrating.
+- Helper tools: guided filament loading, unloading, and changing with material temperature presets and confirmation after heating. Loading extrudes 100 mm then retracts 2 mm; unloading extrudes 5 mm before retracting 100 mm. Filament changing unloads first, then lets you choose the new material before heating and loading. Filament movement is blocked while cold, printing, paused, or calibrating.
 - Complete extruder `rotation_distance` workflow: discovery, heating, marking, controlled extrusion, measurement, calculation, plausibility check, runtime apply, optional verification, backup, and explicit save.
 - Guided PID, flow, pressure advance, probe Z-offset, screws tilt, bed mesh, and input-shaper workflows.
 - Downloadable 30 × 30 × 20 mm STL test model and slicer settings for the flow workflow.

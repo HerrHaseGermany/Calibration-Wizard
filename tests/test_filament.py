@@ -15,14 +15,25 @@ def filament_client():
 
 def test_load_unload_and_heater_off(filament_client):
     client, printer = filament_client
-    assert client.post("/api/tools/filament/heat", json={"temperature": 200}).status_code == 200
-    printer.data.temperature = 200
     for direction in ("load", "unload"):
         response = client.post(
-            f"/api/tools/filament/{direction}", json={"distance": 75, "speed": 2}
+            "/api/tools/filament/heat", json={"temperature": 210, "direction": direction}
         )
         assert response.status_code == 200
-    assert printer.extrusions == [75, -75]
+        token = response.json()["confirmation_token"]
+        printer.data.temperature = 210
+        response = client.post(
+            f"/api/tools/filament/{direction}", json={"confirmation_token": token, "speed": 2}
+        )
+        assert response.status_code == 200
+        assert response.json()["distance"] == 100
+        assert (
+            client.post(
+                f"/api/tools/filament/{direction}", json={"confirmation_token": token}
+            ).status_code
+            == 409
+        )
+    assert printer.extrusions == [100, -2, 5, -100]
     assert client.post("/api/tools/filament/heat", json={"temperature": 0}).status_code == 200
     assert printer.data.target == 0
 
@@ -31,7 +42,11 @@ def test_load_unload_and_heater_off(filament_client):
 def test_filament_is_blocked_during_prints(filament_client, state):
     client, printer = filament_client
     printer.data.print_state = state
-    for action, values in [("heat", {"temperature": 200}), ("load", {}), ("unload", {})]:
+    for action, values in [
+        ("heat", {"temperature": 200}),
+        ("load", {"confirmation_token": "invalid"}),
+        ("unload", {"confirmation_token": "invalid"}),
+    ]:
         assert client.post(f"/api/tools/filament/{action}", json=values).status_code == 409
     assert printer.extrusions == []
     assert printer.data.target == 0
@@ -39,7 +54,10 @@ def test_filament_is_blocked_during_prints(filament_client, state):
 
 def test_cold_disconnected_and_calibrating_are_blocked(filament_client):
     client, printer = filament_client
-    assert client.post("/api/tools/filament/load", json={}).status_code == 409
+    assert (
+        client.post("/api/tools/filament/load", json={"confirmation_token": "invalid"}).status_code
+        == 409
+    )
     printer.data.connected = False
     assert client.post("/api/tools/filament/heat", json={"temperature": 200}).status_code == 409
     printer.data.connected = True
@@ -48,12 +66,15 @@ def test_cold_disconnected_and_calibrating_are_blocked(filament_client):
     assert printer.extrusions == []
 
 
-@pytest.mark.parametrize(
-    "values", [{"distance": -5}, {"distance": 501}, {"speed": 0}, {"speed": 6}]
-)
+@pytest.mark.parametrize("values", [{"speed": 0}, {"speed": 6}, {"speed": -1}])
 def test_invalid_movement_is_rejected(filament_client, values):
     client, printer = filament_client
-    assert client.post("/api/tools/filament/load", json=values).status_code == 422
+    assert (
+        client.post(
+            "/api/tools/filament/load", json={"confirmation_token": "invalid", **values}
+        ).status_code
+        == 422
+    )
     assert printer.extrusions == []
 
 
@@ -106,3 +127,52 @@ async def test_unload_sends_negative_chunks_and_restores_state():
     assert "M83" in script
     assert "RESTORE_GCODE_STATE" in script
     assert "MOVE=0" in script
+
+
+def test_target_temperature_direction_and_extruder_are_checked(filament_client):
+    client, printer = filament_client
+    printer.heating_rate = 0
+    printer.data.temperature = 180
+    result = client.post("/api/tools/filament/heat", json={"temperature": 240})
+    token = result.json()["confirmation_token"]
+    values = {"confirmation_token": token}
+    assert client.post("/api/tools/filament/load", json=values).status_code == 409
+    printer.data.temperature = 240
+    assert client.post("/api/tools/filament/unload", json=values).status_code == 409
+    printer.data.extruder = "extruder1"
+    assert client.post("/api/tools/filament/load", json=values).status_code == 409
+    printer.data.extruder = "extruder"
+    printer.data.target = 210
+    assert client.post("/api/tools/filament/load", json=values).status_code == 409
+    assert printer.extrusions == []
+
+
+def test_filament_change_allows_a_different_material(filament_client):
+    client, printer = filament_client
+    for direction, temperature in [("unload", 240), ("load", 210)]:
+        result = client.post(
+            "/api/tools/filament/heat", json={"direction": direction, "temperature": temperature}
+        )
+        printer.data.temperature = temperature
+        response = client.post(
+            f"/api/tools/filament/{direction}",
+            json={"confirmation_token": result.json()["confirmation_token"]},
+        )
+        assert response.status_code == 200
+    assert printer.extrusions == [5, -100, 100, -2]
+    assert printer.data.target == 210
+
+
+def test_heater_off_invalidates_confirmation(filament_client):
+    client, printer = filament_client
+    result = client.post("/api/tools/filament/heat", json={"temperature": 210})
+    printer.data.temperature = 210
+    client.post("/api/tools/filament/heat", json={"temperature": 0})
+    assert (
+        client.post(
+            "/api/tools/filament/load",
+            json={"confirmation_token": result.json()["confirmation_token"]},
+        ).status_code
+        == 409
+    )
+    assert printer.extrusions == []
