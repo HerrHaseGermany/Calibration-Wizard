@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261010-4";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261010-6";
 import { adjustment, positionMap } from "./positions.mjs?v=20261006-2";
 
 const base = new URL("./api/", window.location.href);
@@ -168,10 +168,6 @@ function dashboard() {
   panel.innerHTML = `<h1>Tools</h1>
     ${printerReadinessNotice()}
     <div class="tool-groups">
-      <section class="tool-group" aria-labelledby="calibration-title">
-        <h2 id="calibration-title">Kalibrierung</h2>
-        <div class="calibration-phases">${cards}${unavailableCards}</div>
-      </section>
       <section class="tool-group" aria-labelledby="helper-title">
         <h2 id="helper-title">Helfer</h2>
         <div class="calibration-grid">
@@ -181,6 +177,10 @@ function dashboard() {
             <div class="card-buttons"><button id="open-filament" class="card-start" type="button" ${ready ? "" : "disabled"}>Öffnen →</button></div>
           </div>
         </div>
+      </section>
+      <section class="tool-group" aria-labelledby="calibration-title">
+        <h2 id="calibration-title">Kalibrierung</h2>
+        <div class="calibration-phases">${cards}${unavailableCards}</div>
       </section>
     </div>`;
   const openWizard = (card) => {
@@ -242,23 +242,27 @@ function filamentPage() {
         <div id="filament-new-material" class="${mode === "change" ? "" : "hidden"}"><h3>Zu</h3>${presetButtons()}${temperatureInput("filament-new-temperature")}</div>
       </div>
       <div id="filament-heating" class="hidden"><strong id="filament-live-temperature"></strong><progress id="filament-heat-progress" max="100" value="0"></progress></div>
+      <div id="filament-moving" class="hidden"><strong id="filament-move-label"></strong><progress id="filament-move-progress" max="100" value="0" aria-labelledby="filament-move-label"></progress></div>
       <p>Pro Vorgang werden 100 mm Filament bewegt. Beim Laden folgen 2 mm Retract; vor dem Entladen werden 5 mm extrudiert.</p>
       <p id="filament-dialog-error" class="notice hidden" role="alert"></p>
-      <p id="filament-hot-note" class="hidden">Das Hotend bleibt anschließend heiß, bis du die Heizung ausschaltest.</p>
-      <div class="actions">${button("filament-confirm", "Aufheizen")} ${button("filament-dialog-off", "Heizung ausschalten", "secondary")} ${button("filament-close", "Abbrechen", "secondary")}</div>`;
+      <p id="filament-hot-note" class="hidden">Mit „Fertig“ wird das Hotend ausgeschaltet.</p>
+      <div class="actions">${button("filament-confirm", "Aufheizen")} ${button("filament-keep-hot", "Beenden und Hotend anlassen", "secondary")} ${button("filament-close", "Abbrechen", "secondary")}</div>`;
     document.body.append(dialog);
     const confirm = dialog.querySelector("#filament-confirm");
     const close = dialog.querySelector("#filament-close");
     const process = dialog.querySelector("#filament-process");
     const errorBox = dialog.querySelector("#filament-dialog-error");
     const heating = dialog.querySelector("#filament-heating");
+    const moving = dialog.querySelector("#filament-moving");
+    const moveLabel = dialog.querySelector("#filament-move-label");
+    const moveProgress = dialog.querySelector("#filament-move-progress");
     const selection = dialog.querySelector("#filament-selection");
     const currentMaterial = dialog.querySelector("#filament-current-material");
     const currentTemperature = dialog.querySelector("#filament-current-temperature");
     const newMaterial = dialog.querySelector("#filament-new-material");
     const newTemperature = dialog.querySelector("#filament-new-temperature");
-    const heaterOff = dialog.querySelector("#filament-dialog-off");
-    heaterOff.classList.add("hidden");
+    const keepHot = dialog.querySelector("#filament-keep-hot");
+    keepHot.classList.add("hidden");
     bindPresets(currentMaterial, currentTemperature);
     bindPresets(newMaterial, newTemperature);
     homeButton.disabled = true;
@@ -266,6 +270,7 @@ function filamentPage() {
       stage = "error";
       confirm.disabled = true;
       close.disabled = false;
+      keepHot.classList.add("hidden");
       errorBox.textContent = error.message;
       errorBox.classList.remove("hidden");
       localize(dialog);
@@ -289,6 +294,24 @@ function filamentPage() {
         timer = setTimeout(poll, 1000);
       } catch (error) { if (!disposed) showFailure(error); }
     };
+    const pollMovement = async () => {
+      if (disposed || stage !== "running") return;
+      try {
+        const response = await fetch(new URL("tools/filament/progress", base));
+        if (!response.ok) throw new Error("Fortschritt konnte nicht geladen werden.");
+        const current = await response.json();
+        if (disposed || stage !== "running") return;
+        if (current.operation_id === token) {
+          moveProgress.value = current.percent;
+          moveLabel.textContent = `${current.completed} / ${current.total} mm · ${current.percent} %`;
+        }
+      } catch {
+        // Losing progress updates must not unlock controls while the printer is moving.
+        moveLabel.textContent = "Warte auf Bewegungsfortschritt…";
+        localize(dialog);
+      }
+      if (!disposed && stage === "running") timer = setTimeout(pollMovement, 500);
+    };
     const startHeating = async () => {
       stage = "heating";
       confirm.disabled = true;
@@ -296,6 +319,7 @@ function filamentPage() {
       confirm.textContent = "Bestätigen und starten";
       process.textContent = "Hotend wird aufgeheizt…";
       heating.classList.remove("hidden");
+      moving.classList.add("hidden");
       selection.classList.add("hidden");
       localize(dialog);
       try {
@@ -306,11 +330,11 @@ function filamentPage() {
         await poll();
       } catch (error) { showFailure(error); }
     };
-    const closeDialog = async () => {
+    const closeDialog = async (leaveHeaterOn = false) => {
       if (close.disabled) return;
       close.disabled = true;
       clearTimeout(timer);
-      if (stage !== "complete" && startedHeating) {
+      if (startedHeating && !leaveHeaterOn) {
         stage = "closing";
         try { await request("heat", {temperature: 0}); }
         catch (error) { showFailure(error); return; }
@@ -320,16 +344,10 @@ function filamentPage() {
       dialog.remove();
       homeButton.disabled = false;
     };
-    close.addEventListener("click", closeDialog);
+    close.addEventListener("click", () => closeDialog());
     dialog.addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
-    heaterOff.addEventListener("click", async () => {
-      heaterOff.disabled = true;
-      close.disabled = true;
-      try {
-        await request("heat", {temperature: 0});
-        close.disabled = false;
-        await closeDialog();
-      } catch (error) { showFailure(error); heaterOff.disabled = false; }
+    keepHot.addEventListener("click", () => {
+      if (stage === "complete") closeDialog(true);
     });
     confirm.addEventListener("click", async () => {
       if (confirm.disabled) return;
@@ -352,9 +370,18 @@ function filamentPage() {
       confirm.disabled = true;
       close.disabled = true;
       process.textContent = "Filamentbewegung läuft…";
+      heating.classList.add("hidden");
+      moving.classList.remove("hidden");
+      moveProgress.value = 0;
+      moveLabel.textContent = `0 / ${direction === "load" ? 102 : 105} mm · 0 %`;
       localize(dialog);
       try {
-        await request(direction, {speed, confirmation_token: token});
+        const movement = request(direction, {speed, confirmation_token: token});
+        pollMovement();
+        await movement;
+        clearTimeout(timer);
+        moveProgress.value = 100;
+        moveLabel.textContent = `${direction === "load" ? 102 : 105} / ${direction === "load" ? 102 : 105} mm · 100 %`;
         heating.classList.add("hidden");
         if (mode === "change" && direction === "unload") {
           stage = "swap";
@@ -368,7 +395,8 @@ function filamentPage() {
           process.textContent = direction === "load" ? "Filament geladen." : "Filament entladen.";
           confirm.classList.add("hidden");
           close.textContent = "Fertig";
-          heaterOff.classList.remove("hidden");
+          close.classList.remove("secondary");
+          keepHot.classList.remove("hidden");
           dialog.querySelector("#filament-hot-note").classList.remove("hidden");
         }
         close.disabled = false;

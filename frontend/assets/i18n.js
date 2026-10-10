@@ -12,6 +12,9 @@ export const messages = {
 };
 
 const pairs = [
+  ["Mit „Fertig“ wird das Hotend ausgeschaltet.", "Done switches the hotend off."],
+  ["Beenden und Hotend anlassen", "Finish and keep hotend on"],
+  ["Warte auf Bewegungsfortschritt…", "Waiting for movement progress…"],
   ["Von", "From"], ["Zu", "To"],
   ["Filament zum Laden", "Filament to load"],
   ["Filament zum Entladen", "Filament to unload"],

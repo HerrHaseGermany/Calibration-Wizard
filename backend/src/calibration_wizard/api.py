@@ -58,6 +58,7 @@ def create_app(
     setup_manager = CalibrationSetupManager(printer, config)
     filament_lock = asyncio.Lock()
     filament_job = None
+    filament_progress = {"state": "idle"}
 
     app = FastAPI(
         title="Klipper Calibration Wizard",
@@ -185,9 +186,13 @@ def create_app(
             "confirmation_token": filament_job["token"] if filament_job else None,
         }
 
+    @app.get("/api/tools/filament/progress")
+    async def filament_progress_status():
+        return filament_progress
+
     @app.post("/api/tools/filament/{direction}")
     async def filament_move(direction: str, payload: FilamentMoveRequest, request: Request):
-        nonlocal filament_job
+        nonlocal filament_job, filament_progress
         _check_same_origin(request)
         if direction not in {"load", "unload"}:
             raise HTTPException(status_code=404, detail="Unknown filament action")
@@ -210,15 +215,35 @@ def create_app(
             ):
                 raise WizardError("Die gewählte Zieltemperatur ist noch nicht erreicht.")
             filament_job = None
+            total = 102 if direction == "load" else 105
+            filament_progress = {
+                "operation_id": payload.confirmation_token,
+                "state": "running",
+                "direction": direction,
+                "completed": 0,
+                "total": total,
+                "percent": 0,
+            }
             try:
-                if direction == "load":
-                    await printer.extrude(snapshot.extruder, 100, payload.speed)
-                    await printer.extrude(snapshot.extruder, -2, payload.speed)
-                else:
-                    await printer.extrude(snapshot.extruder, 5, payload.speed)
-                    await printer.extrude(snapshot.extruder, -100, payload.speed)
+                moves = [100, -2] if direction == "load" else [5, -100]
+                for distance in moves:
+                    remaining = abs(distance)
+                    while remaining > 0:
+                        chunk = min(10, remaining)
+                        await printer.extrude(
+                            snapshot.extruder, chunk if distance > 0 else -chunk, payload.speed
+                        )
+                        remaining -= chunk
+                        completed = filament_progress["completed"] + chunk
+                        filament_progress = {
+                            **filament_progress,
+                            "completed": completed,
+                            "percent": round(completed / total * 100, 1),
+                        }
             except PrinterError as exc:
+                filament_progress = {**filament_progress, "state": "error"}
                 raise WizardError(str(exc)) from exc
+            filament_progress = {**filament_progress, "state": "complete"}
         return {"status": "complete", "direction": direction, "distance": 100}
 
     @app.get("/api/wizards/extruder")

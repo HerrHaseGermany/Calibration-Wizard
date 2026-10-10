@@ -66,6 +66,7 @@ render() {
       -e "s|@CONFIG_DIR@|${CONFIG_DIR}|g" \
       -e "s|@KLIPPER_CONFIG@|${KLIPPER_CONFIG}|g" \
       -e "s|@BACKUP_DIR@|${BACKUP_DIR}|g" \
+      -e "s|@MAINSAIL_NAVI@|${MAINSAIL_NAVI}|g" \
       -e "s|@GIT_ORIGIN@|${GIT_ORIGIN}|g" \
       -e "s|@GIT_BRANCH@|${GIT_BRANCH}|g" "$1"
 }

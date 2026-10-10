@@ -1,7 +1,9 @@
+import asyncio
+
 import httpx
 import pytest
 from calibration_wizard.api import create_app
-from calibration_wizard.printer import MockPrinter, MoonrakerPrinter
+from calibration_wizard.printer import MockPrinter, MoonrakerPrinter, PrinterError
 from calibration_wizard.settings import Settings
 from fastapi.testclient import TestClient
 
@@ -33,7 +35,7 @@ def test_load_unload_and_heater_off(filament_client):
             ).status_code
             == 409
         )
-    assert printer.extrusions == [100, -2, 5, -100]
+    assert printer.extrusions == [10] * 10 + [-2, 5] + [-10] * 10
     assert client.post("/api/tools/filament/heat", json={"temperature": 0}).status_code == 200
     assert printer.data.target == 0
 
@@ -167,8 +169,8 @@ def test_filament_change_allows_a_different_material(filament_client):
             json={"confirmation_token": result.json()["confirmation_token"]},
         )
         assert response.status_code == 200
-    assert printer.extrusions == [5, -100, 100, -2]
-    assert speeds == [5, 5, 5, 5]
+    assert printer.extrusions == [5] + [-10] * 10 + [10] * 10 + [-2]
+    assert speeds == [5] * 22
     assert printer.data.target == 210
 
 
@@ -185,3 +187,79 @@ def test_heater_off_invalidates_confirmation(filament_client):
         == 409
     )
     assert printer.extrusions == []
+
+
+@pytest.mark.asyncio
+async def test_movement_progress_tracks_completed_chunks_and_blocks_other_moves():
+    waiting = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowPrinter(MockPrinter):
+        async def extrude(self, extruder, distance, speed):
+            if len(self.extrusions) == 1:
+                waiting.set()
+                await release.wait()
+            await super().extrude(extruder, distance, speed)
+
+    printer = SlowPrinter()
+    printer.data.temperature = 210
+    app = create_app(Settings.from_env(), printer)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        heated = await client.post("/api/tools/filament/heat", json={"temperature": 210})
+        token = heated.json()["confirmation_token"]
+        task = asyncio.create_task(
+            client.post("/api/tools/filament/load", json={"confirmation_token": token})
+        )
+        try:
+            await asyncio.wait_for(waiting.wait(), timeout=2)
+            progress = (await client.get("/api/tools/filament/progress")).json()
+            assert progress["operation_id"] == token
+            assert progress["state"] == "running"
+            assert progress["completed"] == 10
+            assert progress["total"] == 102
+            assert 0 < progress["percent"] < 100
+            second = await client.post(
+                "/api/tools/filament/load", json={"confirmation_token": token}
+            )
+            assert second.status_code == 409
+        finally:
+            release.set()
+            result = await task
+        assert result.status_code == 200
+        progress = (await client.get("/api/tools/filament/progress")).json()
+        assert progress["state"] == "complete"
+        assert progress["percent"] == 100
+        assert progress["completed"] == 102
+
+
+def test_failed_movement_does_not_report_completion():
+    class FailingPrinter(MockPrinter):
+        async def extrude(self, extruder, distance, speed):
+            if self.extrusions:
+                raise PrinterError("Movement interrupted")
+            await super().extrude(extruder, distance, speed)
+
+    printer = FailingPrinter()
+    printer.data.temperature = 210
+    client = TestClient(create_app(Settings.from_env(), printer))
+    result = client.post("/api/tools/filament/heat", json={"temperature": 210})
+    response = client.post(
+        "/api/tools/filament/unload",
+        json={"confirmation_token": result.json()["confirmation_token"]},
+    )
+    # The heat step defaults to loading; choose unloading explicitly.
+    assert response.status_code == 409
+    result = client.post(
+        "/api/tools/filament/heat", json={"temperature": 210, "direction": "unload"}
+    )
+    response = client.post(
+        "/api/tools/filament/unload",
+        json={"confirmation_token": result.json()["confirmation_token"]},
+    )
+    assert response.status_code == 409
+    progress = client.get("/api/tools/filament/progress").json()
+    assert progress["state"] == "error"
+    assert progress["completed"] == 5
+    assert progress["percent"] < 100
