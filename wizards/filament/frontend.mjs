@@ -9,7 +9,7 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
   };
   panel.innerHTML = `<span class="kicker">${msg("tools.helpers")}</span>
     <h1>${msg("filament.title")}</h1>
-    <div class="actions">${button("filament-load", msg("filament.load"))} ${button("filament-unload", msg("filament.unload"))} ${button("filament-change", msg("filament.change"))} ${button("filament-cancel", msg("actions.cancel"), "secondary")}</div>`;
+    <div class="actions">${button("filament-load", msg("filament.load"))} ${button("filament-unload", msg("filament.unload"))} ${button("filament-change", msg("filament.change"))} ${button("filament-cancel", msg("actions.cancel"), "danger ghost")}</div>`;
   const request = async (action, payload) => {
     const response = await fetch(new URL(`tools/filament/${action}`, base), {
       method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
