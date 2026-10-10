@@ -1,5 +1,7 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261010-7";
-import { adjustment, positionMap } from "./positions.mjs?v=20261006-2";
+import { getLocale, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261010-8";
+import { adjustment, positionMap } from "./positions.mjs?v=20261010-8";
+
+await loadLocales();
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -50,13 +52,13 @@ function printerReadinessNotice() {
   if (printerIsReady()) return "";
   const state = printer?.connected ? (printer.state || "unknown") : "disconnected";
   const copy = {
-    shutdown: "Klipper befindet sich im Shutdown-Zustand. Prüfe den Drucker und die Fehlermeldung in Mainsail. Führe einen Firmware-Neustart erst aus, wenn die Ursache behoben ist.",
-    error: "Klipper meldet einen Fehler. Prüfe die Fehlermeldung in Mainsail und behebe die Ursache, bevor du fortfährst.",
-    startup: "Klipper startet gerade. Die Kalibrierungen werden automatisch freigegeben, sobald die Firmware bereit ist.",
-    disconnected: "Klipper Tools kann Klipper derzeit nicht erreichen. Prüfe die Verbindung und den Zustand in Mainsail.",
-  }[state] || `Klipper ist momentan nicht bereit (Zustand: ${esc(state)}). Prüfe den Drucker in Mainsail.`;
-  const detail = printer?.state_message ? `<p class="printer-state-message" data-no-i18n>${esc(printer.state_message)}</p>` : "";
-  return `<aside class="printer-readiness" role="alert"><div><strong>Klipper ist nicht bereit</strong><p>${copy}</p>${detail}</div><a class="button secondary" href="/">Zu Mainsail</a></aside>`;
+    shutdown: msg("ui.klipper_is_in_shutdown_state_check_the_printer_and_the"),
+    error: msg("ui.klipper_reports_an_error_check_the_message_in_mainsail_and"),
+    startup: msg("ui.klipper_is_starting_calibrations_will_be_enabled_automatically_as_soon"),
+    disconnected: msg("ui.klipper_tools_cannot_reach_klipper_right_now_check_the_connection"),
+  }[state] || msg("ui.klipper_is_currently_not_ready_state_value_check_the_printer", {value0: state});
+  const detail = printer?.state_message ? `<p class="printer-state-message">${esc(printer.state_message)}</p>` : "";
+  return `<aside class="printer-readiness" role="alert"><div><strong>${msg("ui.klipper_is_not_ready")}</strong><p>${copy}</p>${detail}</div><a class="button secondary" href="/">${msg("ui.go_to_mainsail")}</a></aside>`;
 }
 
 function setOverviewState(current) {
@@ -69,20 +71,8 @@ function setOverviewState(current) {
 const language = document.querySelector("#language");
 language.value = getLocale();
 setLocale(getLocale());
-const localizationObserver = new MutationObserver(records => {
-  const roots = new Set();
-  for (const record of records) {
-    if (record.type === "childList") record.addedNodes.forEach(node => roots.add(node));
-    else roots.add(record.target);
-  }
-  roots.forEach(root => localize(root));
-});
-localizationObserver.observe(document.body, {
-  childList: true, subtree: true, characterData: true,
-  attributes: true, attributeFilter: ["placeholder", "aria-label", "title"],
-});
-language.addEventListener("change",()=>{setLocale(language.value); localize(document.body);});
-localize(document.body);
+language.addEventListener("change", () => { setLocale(language.value); applyTranslations(); });
+applyTranslations();
 
 const themeButton = document.querySelector("#theme-button");
 const systemTheme = matchMedia("(prefers-color-scheme: light)");
@@ -94,24 +84,25 @@ function applyThemeMode(mode, persist=true) {
   document.documentElement.dataset.theme = theme;
   if (persist) localStorage.setItem("kcw-theme-mode",mode);
   document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#0b1017" : "#f3f6f9";
-  document.querySelector("#theme-icon").textContent = mode === "system" ? "◐" : mode === "dark" ? "☾" : "☀";
-  themeButton.title = mode === "system" ? "Farbschema: System" : mode === "light" ? "Farbschema: Hell" : "Farbschema: Dunkel";
-  themeButton.setAttribute("aria-label",themeButton.title);
-  localize(themeButton);
+  setText(document.querySelector("#theme-icon"), () => mode === "system" ? "◐" : mode === "dark" ? "☾" : "☀");
+  const title = () => t(`ui.color_scheme_${mode === "system" ? "system" : mode === "light" ? "light" : "dark"}`);
+  setTranslatedAttribute(themeButton, "title", title);
+  setTranslatedAttribute(themeButton, "aria-label", title);
+
 }
 applyThemeMode(themeMode,false);
 themeButton.addEventListener("click",()=>{const modes=["system","light","dark"]; applyThemeMode(modes[(modes.indexOf(themeMode)+1)%modes.length]);});
 systemTheme.addEventListener("change",()=>{if(themeMode === "system")applyThemeMode("system",false);});
 
 function setSteps(title, labels) {
-  document.querySelector("#rail-title").textContent = title;
+  document.querySelector("#rail-title").innerHTML = title;
   progress.replaceChildren();
   labels.forEach((label) => {
-    const item = document.createElement("li"); item.textContent = label; progress.append(item);
+    const item = document.createElement("li"); item.innerHTML = label; progress.append(item);
   });
 }
 
-setSteps("Extruder calibration", t("steps"));
+setSteps(msg("welcomeTitle"), t("steps").map(key => msg(key)));
 
 function setProgress(step) {
   setOverviewState(false);
@@ -131,7 +122,7 @@ function dashboard() {
   setOverviewState(true);
   emergencyButton.classList.add("hidden");
   emergencyButton.disabled = false;
-  emergencyButton.querySelector(".header-button-label").textContent = "NOT-AUS";
+  setText(emergencyButton.querySelector(".header-button-label"), () => t("ui.emergency_stop"));
   activeWizard = null;
   rail.classList.add("hidden");
   workspace.classList.add("menu-mode");
@@ -143,23 +134,23 @@ function dashboard() {
   const filamentReady = ready && printer?.print_state !== "printing";
   const card = (wizard) => {
     const usable = !printBusy && (ready || wizard.id === "flow");
-    const configured = wizard.configuration?.point_count ? `<span class="configured">${wizard.configuration.point_count} Punkte erkannt</span>` : "";
-    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${calibrationsReady ? "" : "disabled"}>Einrichten</button>` : "";
+    const configured = wizard.configuration?.point_count ? `<span class="configured">${msg("ui.value_points_detected", {value0: wizard.configuration.point_count})}</span>` : "";
+    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${calibrationsReady ? "" : "disabled"}>${msg("ui.configure")}</button>` : "";
     if (wizard.available) {
       const interaction = usable ? `data-wizard="${wizard.id}" role="button" tabindex="0"` : "";
       return `<div class="calibration-card ${usable ? "" : "printer-blocked"}" ${interaction}>
-        <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
-        ${configured}<div class="card-buttons"><button class="card-start" type="button" ${usable ? "" : "disabled"}>Jetzt starten →</button>${setup}</div></div>`;
+        <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p>
+        ${configured}<div class="card-buttons"><button class="card-start" type="button" ${usable ? "" : "disabled"}>${msg("ui.start_now_2")}</button>${setup}</div></div>`;
     }
     return `<div class="calibration-card unavailable">
-      <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${wizard.name}</h3><p>${wizard.description}</p>
-      <span class="unavailable-reason">${wizard.availability_reason || "Auf diesem Drucker nicht verfügbar"}</span>
-      <div class="card-buttons">${setup}<span class="planned">Nicht konfiguriert</span></div></div>`;
+      <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p>
+      <span class="unavailable-reason">${wizard.availability_key ? msg(wizard.availability_key, wizard.availability_params) : msg("ui.not_available_on_this_printer")}</span>
+      <div class="card-buttons">${setup}<span class="planned">${msg("ui.not_configured")}</span></div></div>`;
   };
   const phases = [
-    {title:"1 · Temperatur & Extrusion", ids:["pid","extruder"]},
-    {title:"2 · Mechanik, Gantry & Z", ids:["bed_screws","screws_tilt","z_tilt","quad_gantry_level","probe_offset","bed_mesh"]},
-    {title:"3 · Druckqualität", ids:["flow","input_shaper","pressure_advance"]},
+    {title:msg("overview.phase_temperature"), ids:["pid","extruder"]},
+    {title:msg("overview.phase_mechanics"), ids:["bed_screws","screws_tilt","z_tilt","quad_gantry_level","probe_offset","bed_mesh"]},
+    {title:msg("overview.phase_quality"), ids:["flow","input_shaper","pressure_advance"]},
   ];
   const cards = phases.map(phase=>{
     const entries=phase.ids.map(id=>wizards.find(wizard=>wizard.id===id)).filter(wizard=>wizard?.available);
@@ -167,21 +158,21 @@ function dashboard() {
     return `<section class="calibration-phase"><div class="phase-heading"><h3>${phase.title}</h3></div><div class="calibration-grid">${entries.map(card).join("")}</div></section>`;
   }).join("");
   const unavailable=wizards.filter(wizard=>!wizard.available);
-  const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h3>Nicht verfügbar</h3></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
-  panel.innerHTML = `<h1>Tools</h1>
+  const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h3>${msg("ui.unavailable")}</h3></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
+  panel.innerHTML = `<h1>${msg("ui.tools")}</h1>
     ${printerReadinessNotice()}
     <div class="tool-groups">
       <section class="tool-group">
         <div class="calibration-grid">
           <div class="calibration-card ${filamentReady ? "" : "printer-blocked"}">
-            <span class="card-icon">↕</span><h3>Filament laden / entladen</h3>
-            <p>Hotend aufheizen und Filament kontrolliert laden oder entladen.</p>
-            <div class="card-buttons"><button id="open-filament" class="card-start" type="button" ${filamentReady ? "" : "disabled"}>Öffnen →</button></div>
+            <span class="card-icon">↕</span><h3>${msg("filament.title")}</h3>
+            <p>${msg("ui.heat_the_hotend_and_load_or_unload_filament_at_a")}</p>
+            <div class="card-buttons"><button id="open-filament" class="card-start" type="button" ${filamentReady ? "" : "disabled"}>${msg("ui.open")}</button></div>
           </div>
         </div>
       </section>
       <section class="tool-group" aria-labelledby="calibration-title">
-        <h2 id="calibration-title">Kalibrierung</h2>
+        <h2 id="calibration-title">${msg("tools.calibration")}</h2>
         <div class="calibration-phases">${cards}${unavailableCards}</div>
       </section>
     </div>`;
@@ -194,7 +185,7 @@ function dashboard() {
     card.addEventListener("click", () => openWizard(card));
     card.addEventListener("keydown", (event) => { if(event.target===card && (event.key === "Enter" || event.key === " ")){event.preventDefault();openWizard(card);} });
   });
-  document.querySelectorAll("[data-setup]").forEach((control) => control.addEventListener("click", async (event) => { event.stopPropagation(); try { await openSetup(control.dataset.setup); } catch(error) { showError(error.message); } }));
+  document.querySelectorAll("[data-setup]").forEach((control) => control.addEventListener("click", async (event) => { event.stopPropagation(); try { await openSetup(control.dataset.setup); } catch(error) { showError(error); } }));
   bind("open-filament", filamentPage);
 }
 
@@ -207,22 +198,22 @@ function filamentPage() {
   emergencyButton.classList.remove("hidden");
   updateCalibrationStatusStrip();
   const presets = [["PLA", 210], ["PETG", 240], ["ABS", 255], ["ASA", 260], ["TPU", 220]];
-  const presetButtons = () => `<div class="filament-presets">${presets.map(([material, temperature]) => `<button class="button secondary" type="button" data-filament-preset="${temperature}" aria-pressed="${temperature === 210}" data-no-i18n>${material} · ${temperature} °C</button>`).join("")}</div>`;
-  const temperatureInput = (id) => `<label>Zieltemperatur (°C)<input id="${id}" type="number" min="${Math.max(150, printer?.min_extrude_temp || 170)}" max="300" step="5" value="210"></label>`;
+  const presetButtons = () => `<div class="filament-presets">${presets.map(([material, temperature]) => `<button class="button secondary" type="button" data-filament-preset="${temperature}" aria-pressed="${temperature === 210}">${msg("ui.value_value_c", {value2: material, value3: temperature})}</button>`).join("")}</div>`;
+  const temperatureInput = (id) => `<label>${msg("ui.target_temperature_c")}<input id="${id}" type="number" min="${Math.max(150, printer?.min_extrude_temp || 170)}" max="300" step="5" value="210"></label>`;
   const bindPresets = (root, input) => {
     const update = () => root.querySelectorAll("[data-filament-preset]").forEach(control => control.setAttribute("aria-pressed", Number(control.dataset.filamentPreset) === Number(input.value)));
     root.querySelectorAll("[data-filament-preset]").forEach(control => control.addEventListener("click", () => { input.value = control.dataset.filamentPreset; update(); }));
     input.addEventListener("input", update);
   };
-  panel.innerHTML = `<span class="kicker">Helfer</span>
-    <h1>Filament laden / entladen</h1>
-    <div class="actions">${button("filament-load", "Filament laden")} ${button("filament-unload", "Filament entladen")} ${button("filament-change", "Filament wechseln")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("tools.helpers")}</span>
+    <h1>${msg("filament.title")}</h1>
+    <div class="actions">${button("filament-load", msg("filament.load"))} ${button("filament-unload", msg("filament.unload"))} ${button("filament-change", msg("filament.change"))}</div>`;
   const request = async (action, payload) => {
     const response = await fetch(new URL(`tools/filament/${action}`, base), {
       method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Bitte prüfe die Eingabewerte.");
+    if (!response.ok) throw apiError(data);
     return data;
   };
   const openFlow = async (mode) => {
@@ -237,17 +228,17 @@ function filamentPage() {
     const dialog = document.createElement("dialog");
     dialog.className = "filament-dialog";
     dialog.setAttribute("aria-labelledby", "filament-dialog-title");
-    dialog.innerHTML = `<h2 id="filament-dialog-title">${mode === "change" ? "Filament wechseln" : mode === "load" ? "Filament laden" : "Filament entladen"}</h2>
+    dialog.innerHTML = `<h2 id="filament-dialog-title">${mode === "change" ? msg("filament.change") : mode === "load" ? msg("filament.load") : msg("filament.unload")}</h2>
       <p id="filament-process" role="status"></p>
       <div id="filament-selection">
-        <div id="filament-current-material"><h3>${mode === "change" ? "Von" : mode === "load" ? "Filament zum Laden" : "Filament zum Entladen"}</h3>${presetButtons()}${temperatureInput("filament-current-temperature")}</div>
-        <div id="filament-new-material" class="${mode === "change" ? "" : "hidden"}"><h3>Zu</h3>${presetButtons()}${temperatureInput("filament-new-temperature")}</div>
+        <div id="filament-current-material"><h3>${mode === "change" ? msg("ui.from") : mode === "load" ? msg("ui.filament_to_load") : msg("ui.filament_to_unload")}</h3>${presetButtons()}${temperatureInput("filament-current-temperature")}</div>
+        <div id="filament-new-material" class="${mode === "change" ? "" : "hidden"}"><h3>${msg("ui.to")}</h3>${presetButtons()}${temperatureInput("filament-new-temperature")}</div>
       </div>
       <div id="filament-heating" class="hidden"><strong id="filament-live-temperature"></strong><progress id="filament-heat-progress" max="100" value="0"></progress></div>
       <div id="filament-moving" class="hidden"><strong id="filament-move-label"></strong><progress id="filament-move-progress" max="100" value="0" aria-labelledby="filament-move-label"></progress></div>
       <p id="filament-dialog-error" class="notice hidden" role="alert"></p>
-      <p id="filament-hot-note" class="hidden">Mit „Fertig“ wird das Hotend ausgeschaltet.</p>
-      <div class="actions">${button("filament-confirm", "Aufheizen")} ${button("filament-keep-hot", "Beenden und Hotend anlassen", "secondary")} ${button("filament-close", "Abbrechen", "secondary")}</div>`;
+      <p id="filament-hot-note" class="hidden">${msg("ui.done_switches_the_hotend_off")}</p>
+      <div class="actions">${button("filament-confirm", msg("ui.heat_up"))} ${button("filament-keep-hot", msg("ui.finish_and_keep_hotend_on"), "secondary")} ${button("filament-close", msg("actions.cancel"), "secondary")}</div>`;
     document.body.append(dialog);
     const confirm = dialog.querySelector("#filament-confirm");
     const close = dialog.querySelector("#filament-close");
@@ -272,26 +263,26 @@ function filamentPage() {
       confirm.disabled = true;
       close.disabled = false;
       keepHot.classList.add("hidden");
-      errorBox.textContent = error.message;
+      setText(errorBox, () => error.message);
       errorBox.classList.remove("hidden");
-      localize(dialog);
+
     };
     const poll = async () => {
       if (disposed || !["heating", "ready"].includes(stage)) return;
       try {
         const response = await fetch(new URL("printer", base));
-        if (!response.ok) throw new Error("Druckerstatus konnte nicht geladen werden.");
+        if (!response.ok) throw new LocalizedError("ui.could_not_load_printer_status");
         const current = await response.json();
         if (disposed || !["heating", "ready"].includes(stage)) return;
         const usable = current.connected && current.state === "ready" && current.print_state !== "printing";
         const reached = usable && current.can_extrude && current.temperature >= current.min_extrude_temp && current.temperature >= temperature - 2 && Math.abs(current.target - temperature) < 0.1;
         stage = reached ? "ready" : "heating";
         confirm.disabled = !reached;
-        process.textContent = reached ? (direction === "load" ? "Temperatur erreicht. Setze das Filament ein und bestätige das Laden." : "Temperatur erreicht. Bestätige das Entladen.") : "Hotend wird aufgeheizt…";
-        dialog.querySelector("#filament-live-temperature").textContent = `${current.temperature.toFixed(1)} / ${temperature} °C`;
+        setText(process, () => reached ? (direction === "load" ? t("ui.temperature_reached_insert_filament_and_confirm_loading") : t("ui.temperature_reached_confirm_unloading")) : t("ui.heating_hotend"));
+        setText(dialog.querySelector("#filament-live-temperature"), () => t("ui.value_value_c_2", {value0: current.temperature.toFixed(1), value1: temperature}));
         dialog.querySelector("#filament-heat-progress").value = Math.min(100, Math.max(0, current.temperature / temperature * 100));
-        if (!usable) throw new Error("Klipper muss für den Filamentwechsel bereit sein.");
-        localize(dialog);
+        if (!usable) throw new LocalizedError("ui.klipper_must_be_ready_for_a_filament_change");
+
         timer = setTimeout(poll, 1000);
       } catch (error) { if (!disposed) showFailure(error); }
     };
@@ -299,17 +290,17 @@ function filamentPage() {
       if (disposed || stage !== "running") return;
       try {
         const response = await fetch(new URL("tools/filament/progress", base));
-        if (!response.ok) throw new Error("Fortschritt konnte nicht geladen werden.");
+        if (!response.ok) throw new LocalizedError("errors.progress_load");
         const current = await response.json();
         if (disposed || stage !== "running") return;
         if (current.operation_id === token) {
           moveProgress.value = current.percent;
-          moveLabel.textContent = `${current.percent} %`;
+          setText(moveLabel, () => `${current.percent} %`);
         }
       } catch {
         // Losing progress updates must not unlock controls while the printer is moving.
-        moveLabel.textContent = "Warte auf Bewegungsfortschritt…";
-        localize(dialog);
+        setText(moveLabel, () => t("ui.waiting_for_movement_progress"));
+
       }
       if (!disposed && stage === "running") timer = setTimeout(pollMovement, 500);
     };
@@ -317,12 +308,12 @@ function filamentPage() {
       stage = "heating";
       confirm.disabled = true;
       close.disabled = true;
-      confirm.textContent = "Bestätigen und starten";
-      process.textContent = "Hotend wird aufgeheizt…";
+      setText(confirm, () => t("ui.confirm_and_start"));
+      setText(process, () => t("ui.heating_hotend"));
       heating.classList.remove("hidden");
       moving.classList.add("hidden");
       selection.classList.add("hidden");
-      localize(dialog);
+
       try {
         startedHeating = true;
         const data = await request("heat", {temperature, direction});
@@ -370,48 +361,48 @@ function filamentPage() {
       clearTimeout(timer);
       confirm.disabled = true;
       close.disabled = true;
-      process.textContent = "Filamentbewegung läuft…";
+      setText(process, () => t("ui.moving_filament"));
       heating.classList.add("hidden");
       moving.classList.remove("hidden");
       moveProgress.value = 0;
-      moveLabel.textContent = "0 %";
-      localize(dialog);
+      setText(moveLabel, () => "0 %");
+
       try {
         const movement = request(direction, {speed, confirmation_token: token});
         pollMovement();
         await movement;
         clearTimeout(timer);
         moveProgress.value = 100;
-        moveLabel.textContent = "100 %";
+        setText(moveLabel, () => "100 %");
         heating.classList.add("hidden");
         if (mode === "change" && direction === "unload") {
           stage = "swap";
-          process.textContent = "Setze das neue Filament ein und bestätige die neue Temperatur.";
+          setText(process, () => t("ui.insert_the_new_filament_and_confirm_the_new_temperature"));
           selection.classList.remove("hidden");
           currentMaterial.classList.add("hidden");
-          confirm.textContent = "Neues Material aufheizen";
+          setText(confirm, () => t("ui.heat_for_new_material"));
           confirm.disabled = false;
         } else {
           stage = "complete";
-          process.textContent = direction === "load" ? "Filament geladen." : "Filament entladen.";
+          setText(process, () => direction === "load" ? t("ui.filament_loaded") : t("ui.filament_unloaded"));
           confirm.classList.add("hidden");
-          close.textContent = "Fertig";
+          setText(close, () => t("actions.done"));
           close.classList.remove("secondary");
           keepHot.classList.remove("hidden");
           dialog.querySelector("#filament-hot-note").classList.remove("hidden");
         }
         close.disabled = false;
-        localize(dialog);
+
       } catch (error) { showFailure(error); }
     });
-    localize(dialog);
+
     dialog.showModal();
   };
   const bindTool = (id, handler) => document.querySelector(`#${id}`).addEventListener("click", async (event) => {
     const control = event.currentTarget;
     control.disabled = true;
     try { await handler(); }
-    catch (error) { showError(error.message); }
+    catch (error) { showError(error); }
     finally { control.disabled = false; }
   });
   bindTool("filament-load", () => openFlow("load"));
@@ -432,26 +423,26 @@ async function returnHome() {
 
 homeButton.addEventListener("click",async(event)=>{
   event.currentTarget.disabled=true;
-  try { await returnHome(); } catch(error) { showError(error.message); }
+  try { await returnHome(); } catch(error) { showError(error); }
   finally { event.currentTarget.disabled=isOverview; }
 });
 
 emergencyButton.addEventListener("click", async () => {
   emergencyButton.disabled = true;
-  emergencyButton.querySelector(".header-button-label").textContent = "STOPP…";
+  setText(emergencyButton.querySelector(".header-button-label"), () => t("ui.stopping"));
   try {
     const response = await fetch(new URL("emergency-stop", base), {method:"POST"});
     const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "Not-Aus konnte nicht ausgelöst werden");
+    if (!response.ok) throw apiError(result);
     session = null;
-    emergencyButton.querySelector(".header-button-label").textContent = "GESTOPPT";
+    setText(emergencyButton.querySelector(".header-button-label"), () => t("ui.stopped"));
     window.location.assign(document.querySelector("#mainsail-button").href);
   } catch (error) {
     emergencyButton.disabled = false;
-    emergencyButton.querySelector(".header-button-label").textContent = "NOT-AUS";
-    showError(error.message);
+    setText(emergencyButton.querySelector(".header-button-label"), () => t("ui.emergency_stop"));
+    showError(error);
   }
-  localize(emergencyButton);
+
 });
 
 function cardIcon(id) {
@@ -459,7 +450,7 @@ function cardIcon(id) {
 }
 
 function showError(message) {
-  notice.textContent = message;
+  setText(notice, () => message instanceof Error ? message.message : message);
   notice.classList.remove("hidden");
 }
 
@@ -473,7 +464,7 @@ async function api(path, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || "Request failed");
+  if (!response.ok) throw apiError(data);
   session = data.session || data;
   return data;
 }
@@ -482,14 +473,14 @@ async function postCommand(path) {
   clearError();
   const response = await fetch(new URL(path, base), {method:"POST"});
   const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || "Request failed");
+  if (!response.ok) throw apiError(data);
   return data;
 }
 
 function pendingItemsMarkup(items) {
   const entries = Object.entries(items || {});
   if (!entries.length) return "";
-  return `<div class="pending-values"><strong>Betroffene Konfigurationswerte</strong><pre>${esc(JSON.stringify(items, null, 2))}</pre></div>`;
+  return `<div class="pending-values"><strong>${msg("ui.affected_configuration_values")}</strong><pre>${esc(JSON.stringify(items, null, 2))}</pre></div>`;
 }
 
 function pendingConfigPage(wizardId) {
@@ -500,12 +491,12 @@ function pendingConfigPage(wizardId) {
   rail.classList.add("hidden");
   workspace.classList.add("menu-mode");
   statusStrip.classList.add("hidden");
-  panel.innerHTML = `<span class="kicker">Offene Klipper-Werte</span>
-    <h1>Vorhandene Änderungen auflösen</h1>
-    <p class="lead">Klipper hat bereits ungespeicherte Werte für <code>SAVE_CONFIG</code>. Entscheide zuerst, was mit ihnen passieren soll. Danach wird <strong>${esc(definition?.name || wizardId)}</strong> automatisch geöffnet.</p>
+  panel.innerHTML = `<span class="kicker">${msg("ui.pending_klipper_values")}</span>
+    <h1>${msg("ui.resolve_existing_changes")}</h1>
+    <p class="lead">${msg("ui.klipper_already_has_unsaved_values_for")} <code>${msg("ui.save_config")}</code>${msg("ui.first_decide_what_should_happen_to_them_then")} <strong>${msg(definition?.name_key || `wizards.${wizardId}.name`)}</strong> ${msg("ui.will_open_automatically")}</p>
     ${pendingItemsMarkup(printer?.save_config_pending_items)}
-    <p class="safety-note">„Speichern“ übernimmt alle oben aufgeführten Werte dauerhaft. „Verwerfen“ lädt die zuletzt gespeicherte Konfiguration neu. Beide Aktionen starten Klipper neu.</p>
-    <div class="actions">${button("save-pending", "Vorhandene Werte speichern")} ${button("discard-pending", "Verwerfen und fortfahren", "danger ghost")} ${button("pending-back", "Zurück", "secondary")}</div>`;
+    <p class="safety-note">${msg("ui.save_permanently_applies_all_values_listed_above_discard_reloads_the")}</p>
+    <div class="actions">${button("save-pending", msg("ui.save_existing_values"))} ${button("discard-pending", msg("ui.discard_and_continue"), "danger ghost")} ${button("pending-back", msg("actions.back"), "secondary")}</div>`;
   bind("save-pending", () => resolvePendingConfig(wizardId, "save"));
   bind("discard-pending", () => resolvePendingConfig(wizardId, "discard"));
   bind("pending-back", dashboard);
@@ -533,10 +524,10 @@ function pendingConfigWaitingPage(wizardId, action) {
   rail.classList.add("hidden");
   workspace.classList.add("menu-mode");
   statusStrip.classList.add("hidden");
-  panel.innerHTML = `<span class="kicker">Klipper-Neustart</span><h1>${action === "save" ? "Werte werden gespeichert" : "Werte werden verworfen"}</h1>
-    <p class="lead">${action === "save" ? "Klipper startet neu. Sobald die Firmware wieder bereit ist, kehrt der Wizard automatisch zur Übersicht zurück." : `Klipper startet neu. Sobald die Firmware wieder bereit ist, öffnet der Wizard automatisch <strong>${esc(definition?.name || wizardId)}</strong>.`}</p>
-    <div class="running-state"><span class="spinner"></span><strong>Warte auf Klipper…</strong></div>
-    <div class="actions">${button("pending-cancel", "Zur Übersicht", "secondary")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.klipper_restart")}</span><h1>${action === "save" ? msg("ui.saving_values") : msg("ui.discarding_values")}</h1>
+    <p class="lead">${action === "save" ? msg("ui.klipper_is_restarting_as_soon_as_the_firmware_is_ready_2") : `${msg("ui.klipper_is_restarting_as_soon_as_the_firmware_is_ready")} <strong>${msg(definition?.name_key || `wizards.${wizardId}.name`)}</strong>.`}</p>
+    <div class="running-state"><span class="spinner"></span><strong>${msg("ui.waiting_for_klipper")}</strong></div>
+    <div class="actions">${button("pending-cancel", msg("navigation.overview"), "secondary")}</div>`;
   bind("pending-cancel", () => { sessionStorage.removeItem(pendingResolutionStorageKey); resolvingPendingConfig=false; dashboard(); });
 }
 
@@ -579,43 +570,43 @@ function bind(id, handler) {
   document.querySelector(`#${id}`)?.addEventListener("click", async (event) => {
     const target = event.currentTarget;
     target.disabled = true;
-    try { await handler(); } catch (error) { showError(error.message); target.disabled = false; }
+    try { await handler(); } catch (error) { showError(error); target.disabled = false; }
   });
 }
 
 function welcome() {
   activeWizard = "extruder";
   rememberCalibration("extruder");
-  setSteps("Extruder kalibrieren", t("steps"));
+  setSteps(msg("welcomeTitle"), t("steps").map(key => msg(key)));
   setProgress(0);
   panel.innerHTML = `
-    <span class="kicker">Safe, guided setup</span>
-    <h1>${t("welcomeTitle")}</h1><p class="lead">${t("welcomeBody")}</p>
+    <span class="kicker">${msg("ui.safe_guided_setup")}</span>
+    <h1>${msg("welcomeTitle")}</h1><p class="lead">${msg("welcomeBody")}</p>
     <div class="detail-grid">
-      <div class="detail"><span>Current extruder</span><strong>${printer?.extruder || "extruder"}</strong></div>
-      <div class="detail"><span>Current rotation distance</span><strong>${printer?.rotation_distance?.toFixed(5) || "—"} mm</strong></div>
+      <div class="detail"><span>${msg("ui.current_extruder")}</span><strong>${printer?.extruder || "extruder"}</strong></div>
+      <div class="detail"><span>${msg("ui.current_rotation_distance")}</span><strong>${msg("ui.value_mm", {value3: printer?.rotation_distance?.toFixed(5) || "—"})}</strong></div>
     </div>
-    <div class="actions">${button("start", "Start calibration")}</div>`;
+    <div class="actions">${button("start", msg("ui.start_calibration"))}</div>`;
   bind("start", async () => { await api("wizards/extruder/start", { mark_distance: 120, commanded_extrusion: 100 }); rememberCalibration("extruder", session.id); heat(); });
 }
 
 const genericSteps = {
-  pid: ["Vorbereiten", "PID-Tuning", "Prüfen", "Speichern"],
-  bed_mesh: ["Vorbereiten", "Referenzieren", "Vermessen", "Speichern"],
-  screws_tilt: ["Referenzieren", "Messen", "Einstellen", "Wiederholen"],
-  bed_screws: ["Referenzieren", "Papier-Test", "Schrauben einstellen"],
-  probe_offset: ["Referenzieren", "Probe starten", "Papier-Test", "Speichern"],
-  pressure_advance: ["Vorbereiten", "Testturm", "Auswerten", "Speichern"],
-  flow: ["Test drucken", "Messen", "Berechnen"],
-  input_shaper: ["Sensor prüfen", "Referenzieren", "Messen", "Speichern"],
-  z_tilt: ["Vorbereiten", "Referenzieren", "Ausrichten"],
-  quad_gantry_level: ["Vorbereiten", "Referenzieren", "Ausrichten"],
+  pid: ["ui.prepare", "ui.pid_tuning", "ui.review", "actions.save"],
+  bed_mesh: ["ui.prepare", "ui.home_axes", "ui.measure", "actions.save"],
+  screws_tilt: ["ui.home_axes", "ui.measure_2", "ui.adjust", "ui.repeat"],
+  bed_screws: ["ui.home_axes", "ui.paper_test", "ui.adjust_screws"],
+  probe_offset: ["ui.home_axes", "ui.start_probe", "ui.paper_test", "actions.save"],
+  pressure_advance: ["ui.prepare", "ui.test_tower", "ui.evaluate", "actions.save"],
+  flow: ["ui.print_test", "ui.measure_2", "ui.calculate"],
+  input_shaper: ["ui.check_sensor", "ui.home_axes", "ui.measure_2", "actions.save"],
+  z_tilt: ["ui.prepare", "ui.home_axes", "ui.level"],
+  quad_gantry_level: ["ui.prepare", "ui.home_axes", "ui.level"],
 };
 
 function genericFrame(id, step) {
   const definition = wizards.find((item) => item.id === id);
   activeWizard = id;
-  setSteps(definition?.name || "Kalibrierung", genericSteps[id] || ["Start", "Ergebnis"]);
+  setSteps(msg(definition?.name_key || `wizards.${id}.name`), (genericSteps[id] || ["ui.start", "ui.result"]).map(key => msg(key)));
   setProgress(step);
   updateCalibrationStatusStrip();
 }
@@ -623,36 +614,36 @@ function genericFrame(id, step) {
 function updateCalibrationStatusStrip() {
   if (activeWizard === "pid") {
     statusStrip.classList.remove("hidden");
-    document.querySelector("#status-label-1").textContent = "Hotend Ist";
-    document.querySelector("#status-label-2").textContent = "Heizbett Ist";
-    document.querySelector("#temperature").textContent = `${printer?.temperature?.toFixed(1) ?? "—"} °C`;
-    document.querySelector("#target").textContent = `${printer?.bed_temperature?.toFixed(1) ?? "—"} °C`;
+    setText(document.querySelector("#status-label-1"), () => t("ui.hotend_actual"));
+    setText(document.querySelector("#status-label-2"), () => t("ui.bed_actual"));
+    setText(document.querySelector("#temperature"), () => t("ui.value_c", {value0: printer?.temperature?.toFixed(1) ?? "—"}));
+    setText(document.querySelector("#target"), () => t("ui.value_c", {value0: printer?.bed_temperature?.toFixed(1) ?? "—"}));
   } else if (activeWizard === "extruder" || activeWizard === "filament") {
     statusStrip.classList.remove("hidden");
-    document.querySelector("#status-label-1").textContent = "Hotend Ist";
-    document.querySelector("#status-label-2").textContent = "Hotend Ziel";
-    document.querySelector("#temperature").textContent = `${printer?.temperature?.toFixed(1) ?? "—"} °C`;
-    document.querySelector("#target").textContent = `${printer?.target?.toFixed(1) ?? "—"} °C`;
+    setText(document.querySelector("#status-label-1"), () => t("ui.hotend_actual"));
+    setText(document.querySelector("#status-label-2"), () => t("ui.hotend_target"));
+    setText(document.querySelector("#temperature"), () => t("ui.value_c", {value0: printer?.temperature?.toFixed(1) ?? "—"}));
+    setText(document.querySelector("#target"), () => t("ui.value_c", {value0: printer?.target?.toFixed(1) ?? "—"}));
   } else if (activeWizard === "pressure_advance") {
     statusStrip.classList.remove("hidden");
-    document.querySelector("#status-label-1").textContent = "Druckstatus";
-    document.querySelector("#status-label-2").textContent = "Testfaktor";
-    document.querySelector("#temperature").textContent = printer?.print_state || "—";
-    document.querySelector("#target").textContent = Number.isFinite(session?.data?.factor) ? session.data.factor.toFixed(3) : "—";
+    setText(document.querySelector("#status-label-1"), () => t("ui.print_status"));
+    setText(document.querySelector("#status-label-2"), () => t("ui.test_factor"));
+    setText(document.querySelector("#temperature"), () => printer?.print_state ? t(`printer.print.${printer.print_state}`) : "—");
+    setText(document.querySelector("#target"), () => Number.isFinite(session?.data?.factor) ? session.data.factor.toFixed(3) : "—");
   } else if (activeWizard === "flow") {
     statusStrip.classList.add("hidden");
     return;
   } else if (activeWizard) {
     const definition = wizards.find((item) => item.id === activeWizard);
     statusStrip.classList.remove("hidden");
-    document.querySelector("#status-label-1").textContent = "Aktiver Ablauf";
-    document.querySelector("#status-label-2").textContent = "Referenzierte Achsen";
-    document.querySelector("#temperature").textContent = definition?.name || activeWizard;
-    document.querySelector("#target").textContent = printer?.homed_axes?.toUpperCase() || "keine";
+    setText(document.querySelector("#status-label-1"), () => t("ui.active_workflow"));
+    setText(document.querySelector("#status-label-2"), () => t("ui.homed_axes"));
+    setText(document.querySelector("#temperature"), () => t(definition?.name_key || `wizards.${activeWizard}.name`));
+    setText(document.querySelector("#target"), () => printer?.homed_axes?.toUpperCase() || t("ui.none"));
   } else {
     return;
   }
-  document.querySelector("#klipper-state").textContent = printer?.state || "—";
+  setText(document.querySelector("#klipper-state"), () => printer?.state ? t(`printer.state.${printer.state}`) : "—");
 }
 
 function openGeneric(id) {
@@ -663,42 +654,42 @@ function openGeneric(id) {
   if (id === "flow") return flowSetup();
   if (id === "input_shaper") return shaperSetup();
   const intro = {
-    bed_mesh: ["Bed Mesh", "Das Bett wird zuerst referenziert und danach mit deiner bestehenden Klipper-Konfiguration vermessen."],
-    screws_tilt: ["Bettschrauben ausrichten", "Klipper ermittelt für jede Schraube Drehrichtung und Betrag. Nach jeder Korrektur kannst du erneut messen."],
-    bed_screws: ["Manuelle Bettschrauben", "Klipper fährt jede konfigurierte Schraube an. Du stellst den Papierwiderstand nacheinander von Hand ein."],
-    probe_offset: ["Probe Z-Offset", "Mit PROBE_CALIBRATE und feinen TESTZ-Schritten stellst du den Papierabstand ein."],
-    z_tilt: ["Z-Tilt", "Klipper vermisst die konfigurierten Punkte und richtet zwei oder mehr unabhängige Z-Antriebe aus."],
-    quad_gantry_level: ["Quad Gantry Level", "Klipper vermisst vier Punkte und richtet die Gantry über vier unabhängige Z-Antriebe aus."],
+    bed_mesh: [msg("ui.bed_mesh"), msg("ui.the_printer_is_homed_first_then_the_bed_is_measured")],
+    screws_tilt: [msg("ui.level_bed_screws"), msg("ui.klipper_calculates_direction_and_amount_for_every_screw_you_can")],
+    bed_screws: [msg("ui.manual_bed_screws"), msg("ui.klipper_moves_to_each_configured_screw_you_adjust_the_paper")],
+    probe_offset: [msg("ui.probe_z_offset"), msg("ui.use_probe_calibrate_and_fine_testz_steps_to_set_the")],
+    z_tilt: ["Z-Tilt", msg("ui.klipper_probes_the_configured_points_and_levels_two_or_more")],
+    quad_gantry_level: [msg("ui.quad_gantry_level"), msg("ui.klipper_probes_four_points_and_levels_the_gantry_with_four")],
   }[id];
-  panel.innerHTML = `<span class="kicker">Geführter Ablauf</span><h1>${intro[0]}</h1><p class="lead">${intro[1]}</p>
-    <p class="safety-note">Der Drucker darf nicht drucken oder pausiert sein. Bewegungen starten erst nach deinem Klick.</p>
-    <div class="actions">${button("generic-start", "Kalibrierung starten")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.guided_workflow")}</span><h1>${intro[0]}</h1><p class="lead">${intro[1]}</p>
+    <p class="safety-note">${msg("ui.the_printer_must_not_be_printing_or_paused_motion_starts")}</p>
+    <div class="actions">${button("generic-start", msg("ui.start_calibration"))}</div>`;
   bind("generic-start", async () => { await startCalibration(id); homingPage(id); });
 }
 
 function homingPage(id) {
   genericFrame(id, 1);
-  panel.innerHTML = `<span class="kicker">Bewegung</span><h2>Alle Achsen referenzieren</h2><p>Prüfe, dass der Bauraum frei ist. Der Drucker führt anschließend <code>G28</code> aus.</p>
-    <div class="actions">${button("home", "Jetzt referenzieren")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.motion")}</span><h2>${msg("ui.home_all_axes")}</h2><p>${msg("ui.make_sure_the_build_volume_is_clear_the_printer_will_2")} <code>${msg("ui.g28")}</code> ${msg("ui.label")}</p>
+    <div class="actions">${button("home", msg("ui.home_now"))}</div>`;
   bind("home", async () => { await calibrationAction("home"); if (id === "bed_mesh") bedMeshRun(); else if (id === "screws_tilt") screwsRun(); else if (id === "bed_screws") bedScrewsRun(); else if (id === "z_tilt" || id === "quad_gantry_level") gantryRun(id); else probeRun(); });
 }
 
 function bedScrewsRun() {
-  genericFrame("bed_screws",1); panel.innerHTML=`<span class="kicker">Manueller Papier-Test</span><h2>Erste Schraube anfahren</h2><p>Klipper fährt die Schrauben der Reihe nach an. Stelle an jeder Position denselben leichten Papierwiderstand ein und gehe dann zur nächsten Schraube.</p><div class="actions">${button("run","BED_SCREWS_ADJUST starten")}</div>`;
+  genericFrame("bed_screws",1); panel.innerHTML=`<span class="kicker">${msg("ui.manual_paper_test")}</span><h2>${msg("ui.move_to_the_first_screw")}</h2><p>${msg("ui.klipper_moves_to_the_screws_in_sequence_set_the_same")}</p><div class="actions">${button("run",msg("actions.start_bed_screws"))}</div>`;
   bind("run",async()=>{await calibrationAction("run"); bedScrewsAdjust();});
 }
 
 function bedScrewsAdjust() {
-  genericFrame("bed_screws",2); panel.innerHTML=`<span class="kicker">Schraube einstellen</span><h2>Papierwiderstand angleichen</h2><p>Drehe nur die aktuell angefahrene Schraube. Klicke danach auf „Nächste Schraube“. Klipper wiederholt den Rundgang, bis du das Ergebnis akzeptierst.</p><div class="actions">${button("next","Nächste Schraube")} ${button("accept","Ausrichtung akzeptieren","secondary")} ${button("abort","Abbrechen","danger ghost")}</div>`;
+  genericFrame("bed_screws",2); panel.innerHTML=`<span class="kicker">${msg("ui.adjust_screw")}</span><h2>${msg("ui.match_paper_resistance")}</h2><p>${msg("ui.turn_only_the_screw_at_the_current_position_then_click")}</p><div class="actions">${button("next",msg("ui.next_screw"))} ${button("accept",msg("ui.accept_leveling"),"secondary")} ${button("abort",msg("actions.cancel"),"danger ghost")}</div>`;
   panel.querySelector(".actions").insertAdjacentHTML("beforebegin",positionMap(session.data.positions || []));
-  bind("next",async()=>{await calibrationAction("next"); document.querySelector("#next").disabled=false;}); bind("accept",async()=>{await calibrationAction("accept");completePage("Manuelle Bettschrauben");}); bind("abort",async()=>{await calibrationAction("abort");dashboard();});
+  bind("next",async()=>{await calibrationAction("next"); document.querySelector("#next").disabled=false;}); bind("accept",async()=>{await calibrationAction("accept");completePage(msg("ui.manual_bed_screws"));}); bind("abort",async()=>{await calibrationAction("abort");dashboard();});
 }
 
 function gantryRun(id) {
   genericFrame(id,2); const command=id === "z_tilt" ? "Z_TILT_ADJUST" : "QUAD_GANTRY_LEVEL";
-  panel.innerHTML=`<span class="kicker">Automatische Ausrichtung</span><h2>${command}</h2><p>Klipper fährt alle konfigurierten Messpunkte ab und korrigiert die unabhängigen Z-Antriebe iterativ.</p><div class="actions">${button("run",`${command} starten`)}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.automatic_leveling")}</span><h2>${command}</h2><p>${msg("ui.klipper_probes_all_configured_points_and_iteratively_corrects_the_independent")}</p><div class="actions">${button("run",msg("ui.value_start", {value0: command}))}</div>`;
   panel.querySelector(".actions").insertAdjacentHTML("beforebegin",positionMap(session.data.positions || []));
-  bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>Ausrichtung läuft…'; await calibrationAction("run"); completePage(id === "z_tilt" ? "Z-Tilt" : "Quad Gantry Level");});
+  bind("run",async()=>{document.querySelector("#run").innerHTML=`<span class="spinner"></span>${msg("ui.leveling_running")}`; await calibrationAction("run"); completePage(id === "z_tilt" ? "Z-Tilt" : msg("ui.quad_gantry_level"));});
 }
 
 async function openSetup(id) {
@@ -706,7 +697,7 @@ async function openSetup(id) {
   emergencyButton.classList.add("hidden");
   activeWizard = null; rail.classList.add("hidden"); workspace.classList.add("menu-mode"); statusStrip.classList.add("hidden"); clearError();
   const response = await fetch(new URL(`setup/${id}`,base)); const setup = await response.json();
-  if(!response.ok) throw new Error(setup.detail || "Einrichtung konnte nicht geladen werden");
+  if(!response.ok) throw apiError(setup);
   renderSetup(id,setup);
 }
 
@@ -718,10 +709,10 @@ function pair(value, fallback=["",""]) {
 
 function pointRows(points, named=false) {
   return points.map((point,index)=>`<div class="point-row">
-    ${named ? `<input class="point-name" value="${esc(point.name || `Schraube ${index+1}`)}" aria-label="Name">` : `<span class="point-number">${index+1}</span>`}
-    <input class="point-x" type="number" step="0.1" value="${esc(point.x)}" placeholder="X">
-    <input class="point-y" type="number" step="0.1" value="${esc(point.y)}" placeholder="Y">
-    <button class="remove-point" type="button" aria-label="Punkt entfernen">×</button></div>`).join("");
+    ${named ? `<input class="point-name" value="${esc(point.name || t("ui.screw_value", {value0: index+1}))}" aria-label="${t("ui.name")}" data-i18n-aria-label="ui.name">` : `<span class="point-number">${index+1}</span>`}
+    <input class="point-x" type="number" step="0.1" value="${esc(point.x)}" placeholder="${t("ui.x")}" data-i18n-placeholder="ui.x">
+    <input class="point-y" type="number" step="0.1" value="${esc(point.y)}" placeholder="${t("ui.y")}" data-i18n-placeholder="ui.y">
+    <button class="remove-point" type="button" aria-label="${t("ui.remove_point")}" data-i18n-aria-label="ui.remove_point">×</button></div>`).join("");
 }
 
 function existingPoints(current, kind) {
@@ -730,14 +721,14 @@ function existingPoints(current, kind) {
 }
 
 function renderSetup(id, setup) {
-  const {schema,current,printer_bounds:bounds}=setup; const boundsText=`X ${bounds.x.min ?? "?"}–${bounds.x.max ?? "?"} · Y ${bounds.y.min ?? "?"}–${bounds.y.max ?? "?"} mm`;
+  const {schema,current,printer_bounds:bounds}=setup; const boundsText=msg("ui.x_value_value_y_value_value_mm", {value0: bounds.x.min ?? "?", value1: bounds.x.max ?? "?", value2: bounds.y.min ?? "?", value3: bounds.y.max ?? "?"});
   let fields="";
-  if(schema.kind === "mesh") { const min=pair(current.mesh_min); const max=pair(current.mesh_max); const count=pair(current.probe_count,[5,5]); fields=`<div class="setup-grid"><label>Mesh-Minimum X<input id="min-x" type="number" step="0.1" value="${esc(min[0])}"></label><label>Mesh-Minimum Y<input id="min-y" type="number" step="0.1" value="${esc(min[1])}"></label><label>Mesh-Maximum X<input id="max-x" type="number" step="0.1" value="${esc(max[0])}"></label><label>Mesh-Maximum Y<input id="max-y" type="number" step="0.1" value="${esc(max[1])}"></label><label>Messpunkte X<input id="count-x" type="number" min="2" max="50" value="${esc(count[0])}"></label><label>Messpunkte Y<input id="count-y" type="number" min="2" max="50" value="${esc(count[1])}"></label></div>`; }
-  else { let groups=[]; if(schema.kind === "dual_points") groups=[{key:"z_positions",title:"Positionen der Z-Antriebe",points:(Array.isArray(current.z_positions)?current.z_positions:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:"Probe-Messpunkte",points:existingPoints(current,schema.kind)}]; else if(schema.kind === "quad_gantry") groups=[{key:"gantry_corners",title:"Gantry-Ecken (2 Punkte)",points:(Array.isArray(current.gantry_corners)?current.gantry_corners:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:"Probe-Messpunkte (4 Punkte)",points:existingPoints(current,schema.kind)}]; else groups=[{key:"points",title:"Schraubenpositionen",points:existingPoints(current,schema.kind),named:true}]; fields=groups.map(group=>`<section class="point-group" data-key="${group.key}" data-named="${group.named ? "true":"false"}"><div class="group-heading"><h3>${group.title}</h3><button class="add-point button secondary" type="button">Punkt hinzufügen</button></div><div class="point-list">${pointRows(group.points.length?group.points:[{},{},{},{}],group.named)}</div></section>`).join(""); }
-  const thread=schema.fields.includes("screw_thread") ? `<label>Schraubengewinde<select id="screw-thread">${["CW-M3","CW-M4","CW-M5","CCW-M3","CCW-M4","CCW-M5"].map(value=>`<option ${current.screw_thread===value?"selected":""}>${value}</option>`).join("")}</select></label>`:"";
-  const setupLabels = {speed:"Bewegungsgeschwindigkeit", horizontal_move_z:"Z-Höhe beim Verfahren", probe_height:"Papier-Test-Höhe", retries:"Wiederholungen", retry_tolerance:"Wiederholungstoleranz", max_adjust:"Maximale Korrektur"};
+  if(schema.kind === "mesh") { const min=pair(current.mesh_min); const max=pair(current.mesh_max); const count=pair(current.probe_count,[5,5]); fields=`<div class="setup-grid"><label>${msg("ui.mesh_minimum_x")}<input id="min-x" type="number" step="0.1" value="${esc(min[0])}"></label><label>${msg("ui.mesh_minimum_y")}<input id="min-y" type="number" step="0.1" value="${esc(min[1])}"></label><label>${msg("ui.mesh_maximum_x")}<input id="max-x" type="number" step="0.1" value="${esc(max[0])}"></label><label>${msg("ui.mesh_maximum_y")}<input id="max-y" type="number" step="0.1" value="${esc(max[1])}"></label><label>${msg("ui.probe_points_x")}<input id="count-x" type="number" min="2" max="50" value="${esc(count[0])}"></label><label>${msg("ui.probe_points_y")}<input id="count-y" type="number" min="2" max="50" value="${esc(count[1])}"></label></div>`; }
+  else { let groups=[]; if(schema.kind === "dual_points") groups=[{key:"z_positions",title:msg("ui.z_actuator_positions"),points:(Array.isArray(current.z_positions)?current.z_positions:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:msg("ui.probe_points_2"),points:existingPoints(current,schema.kind)}]; else if(schema.kind === "quad_gantry") groups=[{key:"gantry_corners",title:msg("setup.gantry_corners"),points:(Array.isArray(current.gantry_corners)?current.gantry_corners:[]).map(item=>({x:item[0],y:item[1]}))},{key:"points",title:msg("setup.probe_points_four"),points:existingPoints(current,schema.kind)}]; else groups=[{key:"points",title:msg("ui.screw_positions"),points:existingPoints(current,schema.kind),named:true}]; fields=groups.map(group=>`<section class="point-group" data-key="${group.key}" data-named="${group.named ? "true":"false"}"><div class="group-heading"><h3>${group.title}</h3><button class="add-point button secondary" type="button">${msg("ui.add_point")}</button></div><div class="point-list">${pointRows(group.points.length?group.points:[{},{},{},{}],group.named)}</div></section>`).join(""); }
+  const thread=schema.fields.includes("screw_thread") ? `<label>${msg("ui.screw_thread")}<select id="screw-thread">${["CW-M3","CW-M4","CW-M5","CCW-M3","CCW-M4","CCW-M5"].map(value=>`<option ${current.screw_thread===value?"selected":""}>${value}</option>`).join("")}</select></label>`:"";
+  const setupLabels = {speed:msg("ui.travel_speed"), horizontal_move_z:msg("ui.travel_z_height"), probe_height:msg("ui.paper_test_height"), retries:msg("ui.retries"), retry_tolerance:msg("ui.retry_tolerance"), max_adjust:msg("ui.maximum_adjustment")};
   const advanced=["speed","horizontal_move_z","probe_height","retries","retry_tolerance","max_adjust"].filter(key=>schema.fields.includes(key)).map(key=>`<label>${setupLabels[key]}<input id="setup-${key}" type="number" step="0.01" value="${esc(current[key])}"></label>`).join("");
-  panel.innerHTML=`<span class="kicker">Kalibrierung einrichten</span><h1>${wizards.find(w=>w.id===id)?.name || id}</h1><p class="lead">Lege die Geometrie für diesen Drucker fest. Zulässiger Verfahrbereich laut Klipper: <strong>${boundsText}</strong>.</p><p class="safety-note">Koordinaten müssen zur Mechanik, zum Probe-Offset und zu einem freien Verfahrweg passen. Falsche Werte können eine Kollision verursachen.</p>${fields}<div class="setup-grid advanced-fields">${thread}${advanced}</div><div class="actions">${button("preview-setup","Änderungen prüfen")} ${button("back","Zurück","secondary")}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.configure_calibration")}</span><h1>${msg(`wizards.${id}.name`)}</h1><p class="lead">${msg("ui.define_the_geometry_for_this_printer_travel_range_reported_by")} <strong>${boundsText}</strong>.</p><p class="safety-note">${msg("ui.coordinates_must_match_the_mechanics_probe_offset_and_a_clear")}</p>${fields}<div class="setup-grid advanced-fields">${thread}${advanced}</div><div class="actions">${button("preview-setup",msg("ui.review_changes"))} ${button("back",msg("actions.back"),"secondary")}</div>`;
   document.querySelectorAll(".add-point").forEach(control=>control.addEventListener("click",()=>{const group=control.closest(".point-group"); group.querySelector(".point-list").insertAdjacentHTML("beforeend",pointRows([{}],group.dataset.named==="true")); bindPointRemovers();})); bindPointRemovers(); bind("back",dashboard); bind("preview-setup",async()=>{const values=collectSetup(schema); const response=await api(`setup/${id}/preview`,{values}); renderSetupPreview(id,values,response);});
 }
 
@@ -745,13 +736,13 @@ function bindPointRemovers(){document.querySelectorAll(".remove-point").forEach(
 
 function collectSetup(schema){const value=id=>document.querySelector(`#${id}`)?.value; const values={}; if(schema.kind==="mesh"){values.mesh_min=[value("min-x"),value("min-y")]; values.mesh_max=[value("max-x"),value("max-y")]; values.probe_count=[value("count-x"),value("count-y")];} document.querySelectorAll(".point-group").forEach(group=>{values[group.dataset.key]=[...group.querySelectorAll(".point-row")].map(row=>({x:row.querySelector(".point-x").value,y:row.querySelector(".point-y").value,name:row.querySelector(".point-name")?.value}));}); if(schema.fields.includes("screw_thread"))values.screw_thread=value("screw-thread"); ["speed","horizontal_move_z","probe_height","retries","retry_tolerance","max_adjust"].forEach(key=>{const entry=value(`setup-${key}`);if(entry!==undefined&&entry!=="")values[key]=entry;}); return values;}
 
-function renderSetupPreview(id,values,preview){panel.innerHTML=`<span class="kicker">Vorschau · ${esc(preview.digest)}</span><h2>[${esc(preview.section)}] prüfen</h2><p>Diese normalisierten Werte werden in den vorhandenen Abschnitt geschrieben; andere Schlüssel bleiben erhalten.</p><pre class="config-preview">${esc(Object.entries(preview.settings).map(([key,value])=>`${key}: ${String(value).replaceAll("\n","\n  ")}`).join("\n"))}</pre><label><input id="setup-confirm" type="checkbox" style="width:auto"> Backup erstellen, Konfiguration schreiben und Klipper neu starten.</label><div class="actions">${button("save-setup","Einrichtung speichern")} ${button("back","Abbrechen","secondary")}</div>`; bind("back",dashboard); bind("save-setup",async()=>{if(!document.querySelector("#setup-confirm").checked)throw new Error("Bestätige die Änderung und den Klipper-Neustart."); const result=await api(`setup/${id}/save`,{values,confirmation_token:preview.confirmation_token,restart:true}); panel.innerHTML=`<span class="kicker">Gespeichert</span><h2>Einrichtung übernommen</h2><p>Quelle: <code>${esc(result.source)}</code><br>Backup: <code>${esc(result.backup)}</code></p><p>Klipper wird neu gestartet. Nach dem erneuten Verbinden wird die Kalibrierung automatisch neu bewertet.</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`; bind("dashboard",async()=>{wizards=await fetch(new URL("wizards",base)).then(r=>r.json());dashboard();});});}
+function renderSetupPreview(id,values,preview){panel.innerHTML=`<span class="kicker">${msg("ui.preview_value", {value0: esc(preview.digest)})}</span><h2>${msg("ui.value_review", {value1: esc(preview.section)})}</h2><p>${msg("ui.these_normalized_values_will_be_written_to_the_existing_section")}</p><pre class="config-preview">${esc(Object.entries(preview.settings).map(([key,value])=>`${key}: ${String(value).replaceAll("\n","\n  ")}`).join("\n"))}</pre><label><input id="setup-confirm" type="checkbox" style="width:auto"> ${msg("ui.create_a_backup_write_the_configuration_and_restart_klipper")}</label><div class="actions">${button("save-setup",msg("ui.save_setup"))} ${button("back",msg("actions.cancel"),"secondary")}</div>`; bind("back",dashboard); bind("save-setup",async()=>{if(!document.querySelector("#setup-confirm").checked)throw new LocalizedError("ui.confirm_the_change_and_the_klipper_restart"); const result=await api(`setup/${id}/save`,{values,confirmation_token:preview.confirmation_token,restart:true}); panel.innerHTML=`<span class="kicker">${msg("ui.saved")}</span><h2>${msg("ui.setup_applied")}</h2><p>${msg("ui.source_2")} <code>${esc(result.source)}</code><br>${msg("ui.backup_2")} <code>${esc(result.backup)}</code></p><p>${msg("ui.klipper_is_restarting_after_reconnecting_calibration_availability_is_evaluated_automatically")}</p><div class="actions">${button("dashboard",msg("navigation.overview"))}</div>`; bind("dashboard",async()=>{wizards=await fetch(new URL("wizards",base)).then(r=>r.json());dashboard();});});}
 
 function bedMeshRun() {
   genericFrame("bed_mesh", 2);
-  panel.innerHTML = `<span class="kicker">Messbewegung</span><h2>Druckbett vermessen</h2><p>Klipper fährt alle in <code>[bed_mesh]</code> definierten Punkte ab. Dieser Vorgang kann mehrere Minuten dauern.</p>
-    <div class="actions">${button("run", "Bed Mesh starten")}</div>`;
-  bind("run", async () => { document.querySelector("#run").innerHTML='<span class="spinner"></span>Vermessung läuft…'; await calibrationAction("run"); saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert.", bedMeshSummary() + pendingCalibrationValues()); });
+  panel.innerHTML = `<span class="kicker">${msg("ui.measurement_motion")}</span><h2>${msg("ui.measure_the_print_bed")}</h2><p>${msg("ui.klipper_probes_every_point_defined_in")} <code>${msg("ui.bed_mesh_2")}</code> ${msg("ui.this_may_take_several_minutes")}</p>
+    <div class="actions">${button("run", msg("ui.start_bed_mesh"))}</div>`;
+  bind("run", async () => { document.querySelector("#run").innerHTML=`<span class="spinner"></span>${msg("ui.measurement_running")}`; await calibrationAction("run"); saveKlipperPage(msg("ui.bed_mesh"), msg("ui.the_new_mesh_is_calculated_save_config_saves_it_permanently"), bedMeshSummary() + pendingCalibrationValues()); });
 }
 
 function bedMeshSummary() {
@@ -761,7 +752,7 @@ function bedMeshSummary() {
   const rows = matrix.length;
   const columns = Math.max(0, ...matrix.map(row => Array.isArray(row) ? row.length : 0));
   const range = values.length ? Math.max(...values) - Math.min(...values) : null;
-  return `<div class="result-grid"><div class="metric"><span>Mesh-Profil</span><strong data-no-i18n>${esc(result.profile_name || "default")}</strong></div><div class="metric"><span>Messraster</span><strong>${rows && columns ? `${columns} × ${rows}` : "—"}</strong></div><div class="metric"><span>Höhenspanne</span><strong>${Number.isFinite(range) ? `${range.toFixed(3)} mm` : "—"}</strong></div></div>`;
+  return `<div class="result-grid"><div class="metric"><span>${msg("ui.mesh_profile")}</span><strong>${esc(result.profile_name || "default")}</strong></div><div class="metric"><span>${msg("ui.measurement_grid")}</span><strong>${rows && columns ? `${columns} × ${rows}` : "—"}</strong></div><div class="metric"><span>${msg("ui.height_range")}</span><strong>${Number.isFinite(range) ? msg("ui.value_mm_2", {value0: range.toFixed(3)}) : "—"}</strong></div></div>`;
 }
 
 function pendingCalibrationValues() {
@@ -770,7 +761,7 @@ function pendingCalibrationValues() {
 
 function screwsRun() {
   genericFrame("screws_tilt", 1);
-  panel.innerHTML = `<span class="kicker">Messung</span><h2>Schraubenpositionen messen</h2><p>Klipper fährt die konfigurierten Schraubenpositionen an und berechnet die Korrekturen.</p><div class="actions">${button("run", "SCREWS_TILT_CALCULATE starten")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.measurement")}</span><h2>${msg("ui.measure_screw_positions")}</h2><p>${msg("ui.klipper_probes_the_configured_screw_positions_and_calculates_the_adjustments")}</p><div class="actions">${button("run", msg("actions.start_screws_tilt"))}</div>`;
   bind("run", async () => { await calibrationAction("calculate"); screwsResult(); });
 }
 
@@ -780,34 +771,34 @@ function screwsResult() {
   const positions = session.data.positions || [];
   const positioned = positions.filter(point => Object.hasOwn(result.results || {}, point.id));
   const unmatched = entries.filter(([id]) => !positioned.some(point => point.id === id));
-  const rows = unmatched.map(([name, item]) => `<div class="metric"><span data-no-i18n>${esc(name)}</span>${adjustment(item)}</div>`).join("");
+  const rows = unmatched.map(([name, item]) => `<div class="metric"><span>${esc(name)}</span>${adjustment(item)}</div>`).join("");
   const layout = positionMap(positioned, result.results) + (rows ? `<div class="result-grid">${rows}</div>` : "");
-  panel.innerHTML = `<span class="kicker">Ergebnis</span><h2>Schrauben einstellen</h2>${layout || '<p>Klipper meldet keine Schraubenergebnisse.</p>'}<p>Stelle die Schrauben bei stillstehendem Drucker ein und wiederhole danach die Messung. Eine mechanische Änderung kann eine erneute Z‑Offset-Kalibrierung erfordern.</p><div class="actions">${button("again", "Erneut messen")} ${button("done", "Fertig", "secondary")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.result")}</span><h2>${msg("ui.adjust_screws")}</h2>${layout || `<p>${msg("ui.klipper_reports_no_screw_results")}</p>`}<p>${msg("ui.adjust_the_screws_while_the_printer_is_stationary_then_repeat")}</p><div class="actions">${button("again", msg("ui.measure_again"))} ${button("done", msg("actions.done"), "secondary")}</div>`;
   bind("again", screwsRun); bind("done", dashboard);
 }
 
 function probeRun() {
   genericFrame("probe_offset", 1);
-  panel.innerHTML = `<span class="kicker">Probe</span><h2>Manuelle Z-Kalibrierung starten</h2><p>Klipper positioniert die Düse und startet <code>PROBE_CALIBRATE</code>. Lege danach ein normales Blatt Papier unter die saubere Düse.</p><div class="actions">${button("begin", "PROBE_CALIBRATE starten")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.probe")}</span><h2>${msg("ui.start_manual_z_calibration")}</h2><p>${msg("ui.klipper_positions_the_nozzle_and_starts")} <code>${msg("ui.probe_calibrate")}</code>${msg("ui.then_place_a_normal_sheet_of_paper_under_the_clean")}</p><div class="actions">${button("begin", msg("actions.start_probe"))}</div>`;
   bind("begin", async () => { await calibrationAction("begin"); probeAdjust(); });
 }
 
 function probeAdjust() {
   genericFrame("probe_offset", 2);
-  const controls = [-1,-.5,-.1,-.05,-.01,.01,.05,.1,.5,1].map((value) => `<button class="button secondary testz" data-z="${value}">${value > 0 ? "+" : ""}${value} mm</button>`).join("");
-  panel.innerHTML = `<span class="kicker">Papier-Test</span><h2>Düse schrittweise absenken</h2><p>Bewege Z, bis sich das Papier mit leichtem Widerstand bewegen lässt. Negative Werte senken die Düse. Beginne grob und werde dann feiner.</p><div class="jog-grid">${controls}</div><div class="actions">${button("accept", "Position übernehmen")} ${button("abort", "Abbrechen", "danger ghost")}</div>`;
-  document.querySelectorAll(".testz").forEach((control) => control.addEventListener("click", async () => { control.disabled=true; try { await calibrationAction("testz", {amount:Number(control.dataset.z)}); } catch(error) { showError(error.message); } finally { control.disabled=false; } }));
-  bind("accept", async () => { await calibrationAction("accept"); saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert.", pendingCalibrationValues()); });
+  const controls = [-1,-.5,-.1,-.05,-.01,.01,.05,.1,.5,1].map((value) => `<button class="button secondary testz" data-z="${value}">${msg("ui.valuevalue_mm", {value1: value > 0 ? "+" : "", value2: value})}</button>`).join("");
+  panel.innerHTML = `<span class="kicker">${msg("ui.paper_test")}</span><h2>${msg("ui.lower_nozzle_step_by_step")}</h2><p>${msg("ui.move_z_until_the_paper_slides_with_light_resistance_negative")}</p><div class="jog-grid">${controls}</div><div class="actions">${button("accept", msg("ui.accept_position"))} ${button("abort", msg("actions.cancel"), "danger ghost")}</div>`;
+  document.querySelectorAll(".testz").forEach((control) => control.addEventListener("click", async () => { control.disabled=true; try { await calibrationAction("testz", {amount:Number(control.dataset.z)}); } catch(error) { showError(error); } finally { control.disabled=false; } }));
+  bind("accept", async () => { await calibrationAction("accept"); saveKlipperPage(msg("ui.probe_z_offset"), msg("ui.the_offset_is_applied_but_has_not_been_saved_permanently"), pendingCalibrationValues()); });
   bind("abort", async () => { await calibrationAction("abort"); dashboard(); });
 }
 
 function pidSetup() {
   genericFrame("pid", 0);
   const heaters = wizards.find(item=>item.id==="pid")?.configuration?.heaters || ["extruder"];
-  const heaterName = value => value === "heater_bed" ? "Heizbett" : value === "extruder" ? "Hotend" : value.startsWith("extruder") ? `Hotend · ${value}` : value.replace("heater_generic ", "");
-  panel.innerHTML = `<span class="kicker">Heizer wählen</span><h1>PID kalibrieren</h1><p class="lead">Wähle den Heizer und eine typische Drucktemperatur. Nach dem ersten Aufheizen schaltet Klipper den Heizer mehrfach knapp ober- und unterhalb der Zieltemperatur um.</p>
-    <label for="heater">Heizer</label><select id="heater">${heaters.map(value=>`<option value="${esc(value)}">${esc(heaterName(value))}</option>`).join("")}</select>
-    <label for="pid-target">Zieltemperatur · Schritte von 5 °C</label><div class="input-row"><input id="pid-target" type="number" value="220" min="150" max="300" step="5"><span class="unit">°C</span></div><div class="actions">${button("pid-start", "PID-Tuning starten")}</div>`;
+  const heaterName = value => value === "heater_bed" ? t("ui.heated_bed") : value === "extruder" ? "Hotend" : value.startsWith("extruder") ? t("ui.hotend_value", {value0: value}) : value.replace("heater_generic ", "");
+  panel.innerHTML = `<span class="kicker">${msg("ui.choose_heater")}</span><h1>${msg("ui.calibrate_pid")}</h1><p class="lead">${msg("ui.choose_the_heater_and_a_typical_printing_temperature_after_the")}</p>
+    <label for="heater">${msg("ui.heater")}</label><select id="heater">${heaters.map(value=>`<option value="${esc(value)}" ${value === "heater_bed" ? 'data-i18n="ui.heated_bed"' : ""}>${esc(heaterName(value))}</option>`).join("")}</select>
+    <label for="pid-target">${msg("ui.target_temperature_5_c_increments")}</label><div class="input-row"><input id="pid-target" type="number" value="220" min="150" max="300" step="5"><span class="unit">${msg("ui.c")}</span></div><div class="actions">${button("pid-start", msg("ui.start_pid_tuning"))}</div>`;
   const updatePidRange = (value) => { const hotend=value.startsWith("extruder"); const input=document.querySelector("#pid-target"); input.value=hotend?220:60; input.min=hotend?150:30; input.max=hotend?300:130; };
   document.querySelector("#heater").addEventListener("change", (event) => updatePidRange(event.target.value));
   updatePidRange(document.querySelector("#heater").value);
@@ -816,131 +807,131 @@ function pidSetup() {
 
 function pidReadyPage() {
   genericFrame("pid",1);
-  panel.innerHTML=`<span class="kicker">Heizzyklen</span><h2>PID-Tuning bereit</h2>${pidSelectionSummary()}<p>Während der Messung werden hohe Temperaturen erreicht. Nach dem ersten Aufheizen folgen mehrere kurze Heiz- und Abkühlphasen um die Zieltemperatur. Lasse den Drucker nicht unbeaufsichtigt.</p><div class="actions">${button("run","Messung ausführen")}</div>`;
-  bind("run",async()=>{document.querySelector("#run").innerHTML='<span class="spinner"></span>PID-Tuning läuft…'; await calibrationAction("run"); saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary() + pendingCalibrationValues());});
+  panel.innerHTML=`<span class="kicker">${msg("ui.heating_cycles")}</span><h2>${msg("ui.pid_tuning_ready")}</h2>${pidSelectionSummary()}<p>${msg("ui.high_temperatures_are_reached_during_measurement_after_the_initial_heat")}</p><div class="actions">${button("run",msg("ui.run_measurement"))}</div>`;
+  bind("run",async()=>{document.querySelector("#run").innerHTML=`<span class="spinner"></span>${msg("ui.pid_tuning_running")}`; await calibrationAction("run"); saveKlipperPage(msg("ui.pid_values"), msg("ui.klipper_has_calculated_new_pid_values_review_the_result_then"), pidSelectionSummary() + pendingCalibrationValues());});
 }
 
 function pidSelectionSummary() {
   const selected = session?.data?.heater || "extruder";
-  const heater = selected === "heater_bed" ? "Heizbett" : selected === "extruder" ? "Hotend" : selected;
+  const heater = selected === "heater_bed" ? msg("ui.heated_bed") : selected === "extruder" ? "Hotend" : selected;
   const target = Number(session?.data?.target);
-  return `<div class="result-grid"><div class="metric"><span>Ausgewählter Heizer</span><strong>${heater}</strong></div><div class="metric"><span>Gewählte Zieltemperatur</span><strong>${Number.isFinite(target) ? target.toFixed(0) : "—"} °C</strong></div></div>`;
+  return `<div class="result-grid"><div class="metric"><span>${msg("ui.selected_heater")}</span><strong>${heater}</strong></div><div class="metric"><span>${msg("ui.selected_target_temperature")}</span><strong>${msg("ui.value_c_2", {value1: Number.isFinite(target) ? target.toFixed(0) : "—"})}</strong></div></div>`;
 }
 
 function pressureSetup() {
   genericFrame("pressure_advance",0);
-  panel.innerHTML=`<span class="kicker">Testturm</span><h1>Pressure Advance</h1><p class="lead">Der Klipper-Testturm verändert Pressure Advance über die Höhe. Wähle deinen Extruder-Typ.</p><label for="drive">Extruder-Typ</label><select id="drive"><option value="direct">Direct Drive · Faktor 0,005</option><option value="bowden">Bowden · Faktor 0,020</option></select><div class="actions">${button("pa-start","Vorbereiten")}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.test_tower")}</span><h1>${msg("ui.pressure_advance")}</h1><p class="lead">${msg("ui.the_klipper_test_tower_changes_pressure_advance_with_height_select")}</p><label for="drive">${msg("ui.extruder_type")}</label><select id="drive"><option value="direct">${msg("ui.direct_drive_factor_0_005")}</option><option value="bowden">${msg("ui.bowden_factor_0_020")}</option></select><div class="actions">${button("pa-start",msg("ui.prepare"))}</div>`;
   bind("pa-start",async()=>{await startCalibration("pressure_advance",{drive:document.querySelector("#drive").value}); pressurePrint();});
 }
 
 function pressurePrint() {
   genericFrame("pressure_advance",1);
-  panel.innerHTML=`<span class="kicker">Slicer & Druck</span><h2>Testturm drucken</h2><p>Lade das <a href="${session.data.model_url}" target="_blank" rel="noopener">offizielle Klipper-Testmodell</a>, slice es mit 0,4-mm Düse, 0,2-mm Schichthöhe, 100 mm/s und deaktivierter dynamischer Beschleunigungssteuerung. Starte danach hier den Tuning-Tower-Befehl und anschließend den Druck in Mainsail.</p><div class="actions">${button("prepare","Tuning Tower aktivieren")}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.slicer_print")}</span><h2>${msg("ui.print_test_tower")}</h2><p>${msg("ui.download_the")} <a href="${session.data.model_url}" target="_blank" rel="noopener">${msg("ui.official_klipper_test_model")}</a>${msg("ui.slice_it_with_a_0_4_mm_nozzle_0_2")}</p><div class="actions">${button("prepare",msg("ui.enable_tuning_tower"))}</div>`;
   bind("prepare",async()=>{await calibrationAction("prepare"); pressureMeasure();});
 }
 
 function pressureMeasure() {
   genericFrame("pressure_advance",2);
-  panel.innerHTML=`<span class="kicker">Auswertung</span><h2>Beste Höhe messen</h2><p>Miss vom Boden bis zu der Höhe, an der die Ecken am gleichmäßigsten sind.</p><label for="pa-height">Höhe</label><div class="input-row"><input id="pa-height" type="number" min="0" max="100" step="0.1"><span class="unit">mm</span></div><div class="actions">${button("calculate","Berechnen")}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.evaluation")}</span><h2>${msg("ui.measure_best_height")}</h2><p>${msg("ui.measure_from_the_base_to_the_height_where_the_corners")}</p><label for="pa-height">${msg("ui.height")}</label><div class="input-row"><input id="pa-height" type="number" min="0" max="100" step="0.1"><span class="unit">mm</span></div><div class="actions">${button("calculate",msg("ui.calculate"))}</div>`;
   bind("calculate",async()=>{await calibrationAction("calculate",{height:Number(document.querySelector("#pa-height").value)}); pressureResult();});
 }
 
 function pressureResult() {
   genericFrame("pressure_advance",2); const value=session.data.value;
-  panel.innerHTML=`<span class="kicker">Ergebnis</span><h2>Pressure Advance ${value.toFixed(4)}</h2><p>Der Wert wird zuerst nur zur Laufzeit gesetzt. Erst deine nächste Bestätigung schreibt ihn in die Extruder-Konfiguration.</p><div class="actions">${button("apply","Temporär anwenden")}</div>`;
-  bind("apply",async()=>{await calibrationAction("apply"); saveLocalPage("Pressure Advance",`Neuer Wert: ${value.toFixed(6)}`);});
+  panel.innerHTML=`<span class="kicker">${msg("ui.result")}</span><h2>${msg("ui.pressure_advance_value", {value0: value.toFixed(4)})}</h2><p>${msg("ui.the_value_is_initially_applied_only_at_runtime_your_next")}</p><div class="actions">${button("apply",msg("ui.apply_temporarily"))}</div>`;
+  bind("apply",async()=>{await calibrationAction("apply"); saveLocalPage(msg("ui.pressure_advance"),msg("ui.new_value_value", {value0: value.toFixed(6)}));});
 }
 
 function flowSetup() {
   genericFrame("flow",0);
-  panel.innerHTML=`<span class="kicker">Slicer-Kalibrierung</span><h1>Flow / Extrusionsfaktor</h1><p class="lead">Drucke den bereitgestellten Testkörper mit einer Wand und ohne Deckschichten. Trage danach Sollstärke und vier Messungen ein.</p>
+  panel.innerHTML=`<span class="kicker">${msg("ui.slicer_calibration")}</span><h1>${msg("ui.flow_extrusion_multiplier")}</h1><p class="lead">${msg("ui.print_the_provided_test_model_with_one_wall_and_no")}</p>
     <section class="model-download" aria-labelledby="flow-model-title">
-      <div><span class="model-icon" aria-hidden="true">STL</span></div>
-      <div><h3 id="flow-model-title">Flow-Testkörper · 30 × 30 × 20 mm</h3><p>Für jeden Slicer geeignet. Das Modell wird erst durch die folgenden Slicer-Einstellungen zum einwandigen Messkörper.</p></div>
-      <a class="button secondary download-button" href="assets/models/flow-calibration-cube-30x30x20.stl" download="flow-calibration-cube-30x30x20.stl">STL herunterladen</a>
+      <div><span class="model-icon" aria-hidden="true">${msg("ui.stl")}</span></div>
+      <div><h3 id="flow-model-title">${msg("ui.flow_test_model_30_30_20_mm")}</h3><p>${msg("ui.suitable_for_any_slicer_the_following_slicer_settings_turn_the")}</p></div>
+      <a class="button secondary download-button" href="assets/models/flow-calibration-cube-30x30x20.stl" download="flow-calibration-cube-30x30x20.stl">${msg("ui.download_stl")}</a>
     </section>
-    <div class="slicer-settings"><h3>Slicer-Einstellungen</h3><ul><li>Wände / Perimeter: <strong>1</strong></li><li>Deckschichten: <strong>0</strong></li><li>Infill: <strong>0 %</strong></li><li>Bodenschichten: <strong>3</strong></li><li>Linienbreite: <strong>0.40 mm</strong> (bei 0,4-mm-Düse)</li><li>Spiral-/Vasenmodus: <strong>deaktiviert</strong></li></ul></div>
-    <p class="measurement-hint">Miss jede Seitenwand mittig, deutlich entfernt von Ecken und untersten Schichten. Verwende bei einer anderen Linienbreite diesen Wert als Sollstärke.</p>
-    <div class="detail-grid"><div><label>Sollstärke</label><input id="flow-expected" type="number" value="0.4" min="0.1" step="0.01"></div><div><label>Aktueller Flow</label><input id="flow-current" type="number" value="100" min="70" max="130" step="0.1"></div>${[1,2,3,4].map(n=>`<div><label>Messung ${n}</label><input class="flow-measure" type="number" min="0.1" step="0.01"></div>`).join("")}</div><div class="actions">${button("flow-calc","Extrusionsfaktor berechnen")}</div>`;
+    <div class="slicer-settings"><h3>${msg("ui.slicer_settings")}</h3><ul><li>${msg("ui.walls_perimeters_2")} <strong>1</strong></li><li>${msg("ui.top_layers_2")} <strong>0</strong></li><li>${msg("ui.infill")} <strong>0 %</strong></li><li>${msg("ui.bottom_layers_2")} <strong>3</strong></li><li>${msg("ui.line_width_2")} <strong>${msg("ui.0_40_mm")}</strong> ${msg("ui.with_a_0_4_mm_nozzle_2")}</li><li>${msg("ui.spiral_vase_mode_2")} <strong>${msg("ui.disabled")}</strong></li></ul></div>
+    <p class="measurement-hint">${msg("ui.measure_each_side_wall_in_the_center_well_away_from")}</p>
+    <div class="detail-grid"><div><label>${msg("ui.target_thickness")}</label><input id="flow-expected" type="number" value="0.4" min="0.1" step="0.01"></div><div><label>${msg("ui.current_flow")}</label><input id="flow-current" type="number" value="100" min="70" max="130" step="0.1"></div>${[1,2,3,4].map(n=>`<div><label>${msg("ui.measurement_value", {value0: n})}</label><input class="flow-measure" type="number" min="0.1" step="0.01"></div>`).join("")}</div><div class="actions">${button("flow-calc",msg("ui.calculate_extrusion_multiplier"))}</div>`;
   bind("flow-calc",async()=>{await startCalibration("flow"); await calibrationAction("calculate",{expected:Number(document.querySelector("#flow-expected").value),current:Number(document.querySelector("#flow-current").value),measurements:[...document.querySelectorAll(".flow-measure")].map(i=>Number(i.value))}); flowResultPage();});
 }
 
 function flowResultPage() {
   genericFrame("flow",2);
-  panel.innerHTML=`<span class="kicker">Ergebnis</span><h2>${session.data.result.toFixed(1)} % Flow</h2><p>Mittlere gemessene Wandstärke: ${session.data.average.toFixed(3)} mm. Übernimm den neuen Wert in dein Filamentprofil im Slicer und drucke zur Kontrolle erneut.</p><div class="actions">${button("done","Fertig")}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.result")}</span><h2>${msg("ui.value_flow", {value0: session.data.result.toFixed(1)})}</h2><p>${msg("ui.average_measured_wall_thickness_value_mm_apply_the_new_value", {value1: session.data.average.toFixed(3)})}</p><div class="actions">${button("done",msg("actions.done"))}</div>`;
   bind("done",dashboard);
 }
 
 function shaperSetup() {
   genericFrame("input_shaper",0);
-  panel.innerHTML=`<span class="kicker">Beschleunigungssensor</span><h1>Input Shaper</h1><p class="lead">Der Sensor wird zuerst abgefragt. Danach erzeugt Klipper starke, schnelle Schwingungen und bestimmt passende Shaper für X und Y.</p><p class="safety-note">Prüfe Sensorbefestigung, Kabelweg und freien Bauraum. Bleibe während der Messung am Drucker.</p><label for="shaper-axis">Achsen</label><select id="shaper-axis"><option value="both">X und Y</option><option value="x">Nur X</option><option value="y">Nur Y</option></select><div class="actions">${button("sensor-check","Sensor prüfen")}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.accelerometer")}</span><h1>${msg("ui.input_shaper")}</h1><p class="lead">${msg("ui.the_sensor_is_queried_first_klipper_then_creates_strong_rapid")}</p><p class="safety-note">${msg("ui.check_sensor_mounting_cable_routing_and_a_clear_build_volume")}</p><label for="shaper-axis">${msg("ui.axes")}</label><select id="shaper-axis"><option value="both">${msg("ui.x_and_y")}</option><option value="x">${msg("ui.x_only")}</option><option value="y">${msg("ui.y_only")}</option></select><div class="actions">${button("sensor-check",msg("ui.check_sensor"))}</div>`;
   bind("sensor-check",async()=>{await startCalibration("input_shaper",{axis:document.querySelector("#shaper-axis").value}); await calibrationAction("check"); shaperHome();});
 }
 
 function shaperHome() {
-  genericFrame("input_shaper",1); panel.innerHTML=`<span class="kicker">Bewegung</span><h2>Achsen referenzieren</h2><p>Räume den Bauraum frei. Anschließend wird G28 ausgeführt.</p><div class="actions">${button("home","Referenzieren")}</div>`;
+  genericFrame("input_shaper",1); panel.innerHTML=`<span class="kicker">${msg("ui.motion")}</span><h2>${msg("ui.home_axes_2")}</h2><p>${msg("ui.clear_the_build_volume_g28_will_then_run")}</p><div class="actions">${button("home",msg("ui.home_axes"))}</div>`;
   bind("home",async()=>{await calibrationAction("home"); shaperRun();});
 }
 
 function shaperRun() {
-  genericFrame("input_shaper",2); panel.innerHTML=`<span class="kicker">Starke Schwingungen</span><h2>Resonanzmessung starten</h2><p>Der Drucker bewegt sich schnell und laut. Stoppe ihn sofort bei lockeren Teilen, Zug am Sensorkabel oder ungewöhnlichen Geräuschen.</p><label><input id="vibration-confirm" type="checkbox" style="width:auto"> Sensor und Kabel sind sicher befestigt, der Bauraum ist frei.</label><div class="actions">${button("run","SHAPER_CALIBRATE starten")}</div>`;
-  bind("run",async()=>{if(!document.querySelector("#vibration-confirm").checked)throw new Error("Bestätige zuerst die sichere Vorbereitung."); document.querySelector("#run").innerHTML='<span class="spinner"></span>Messung läuft…'; await calibrationAction("run"); saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.", pendingCalibrationValues());});
+  genericFrame("input_shaper",2); panel.innerHTML=`<span class="kicker">${msg("ui.strong_vibrations")}</span><h2>${msg("ui.start_resonance_measurement")}</h2><p>${msg("ui.the_printer_moves_quickly_and_loudly_stop_it_immediately_if")}</p><label><input id="vibration-confirm" type="checkbox" style="width:auto"> ${msg("ui.the_sensor_and_cable_are_securely_attached_and_the_build")}</label><div class="actions">${button("run",msg("actions.start_shaper"))}</div>`;
+  bind("run",async()=>{if(!document.querySelector("#vibration-confirm").checked)throw new LocalizedError("ui.confirm_the_safe_preparation_first"); document.querySelector("#run").innerHTML=`<span class="spinner"></span>${msg("ui.measurement_running_2")}`; await calibrationAction("run"); saveKlipperPage(msg("ui.input_shaper"), msg("ui.klipper_has_calculated_suitable_shapers_save_config_saves_them_permanently"), pendingCalibrationValues());});
 }
 
 function saveKlipperPage(title, copy, selection = "") {
-  genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">Dauerhafte Änderung</span><h2>${title} speichern</h2><p>${copy}</p>${selection}<label><input id="confirm-save" type="checkbox" style="width:auto"> Ich möchte genau die Ergebnisse dieser Kalibrierung mit SAVE_CONFIG speichern und Klipper neu starten.</label><div class="actions">${button("save-config","SAVE_CONFIG ausführen")}</div>`;
-  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die dauerhafte Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title, true);});
+  genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">${msg("ui.permanent_change")}</span><h2>${msg("ui.value_save", {value0: rich(title)})}</h2><p>${copy}</p>${selection}<label><input id="confirm-save" type="checkbox" style="width:auto"> ${msg("ui.i_want_to_save_the_results_of_this_calibration_with")}</label><div class="actions">${button("save-config",msg("ui.run_save_config"))}</div>`;
+  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new LocalizedError("ui.confirm_the_permanent_change_first"); await calibrationAction("save",{},session.save_token); completePage(title, true);});
 }
 
 function saveLocalPage(title, copy) {
-  genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">Dauerhafte Änderung</span><h2>${title} speichern</h2><p>${copy}</p><label><input id="confirm-save" type="checkbox" style="width:auto"> Konfigurationsdatei mit Backup ändern.</label><div class="actions">${button("save-config","In Konfiguration speichern")}</div>`;
-  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new Error("Bestätige die Änderung zuerst."); await calibrationAction("save",{},session.save_token); completePage(title, true);});
+  genericFrame(activeWizard,3); panel.innerHTML=`<span class="kicker">${msg("ui.permanent_change")}</span><h2>${msg("ui.value_save", {value0: rich(title)})}</h2><p>${copy}</p><label><input id="confirm-save" type="checkbox" style="width:auto"> ${msg("ui.change_the_configuration_file_with_a_backup")}</label><div class="actions">${button("save-config",msg("ui.save_to_configuration"))}</div>`;
+  bind("save-config",async()=>{if(!document.querySelector("#confirm-save").checked)throw new LocalizedError("ui.confirm_the_change_first"); await calibrationAction("save",{},session.save_token); completePage(title, true);});
 }
 
-function completePage(title, saved = false) { panel.innerHTML=`<span class="kicker">Abgeschlossen</span><h2>${title} ${saved ? "gespeichert" : "abgeschlossen"}</h2><p>${saved ? "Die Kalibrierungswerte wurden dauerhaft übernommen." : "Die Kalibrierung ist abgeschlossen; es war keine Konfigurationsänderung erforderlich."}</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`; bind("dashboard",dashboard); }
+function completePage(title, saved = false) { panel.innerHTML=`<span class="kicker">${msg("ui.complete")}</span><h2>${title} ${saved ? msg("ui.saved_lower") : msg("ui.completed_lower")}</h2><p>${saved ? msg("ui.the_calibration_values_were_saved_permanently") : msg("ui.calibration_is_complete_no_configuration_change_was_required")}</p><div class="actions">${button("dashboard",msg("navigation.overview"))}</div>`; bind("dashboard",dashboard); }
 
 function heat() {
   setProgress(1);
   const minimum = Math.ceil(Math.max(printer?.min_extrude_temp || 170, 150) / 5) * 5;
   const suggested = Math.max(200, minimum);
-  panel.innerHTML = `<span class="kicker">Step 2</span><h2>Heat the extruder</h2>
-    <p>Choose a temperature suitable for the loaded filament. Continue only when Klipper reports that extrusion is safe.</p>
-    <label for="heat-input">Target temperature · 5 °C increments</label><div class="input-row"><input id="heat-input" type="number" min="${minimum}" max="300" value="${suggested}" step="5"><span class="unit">°C</span></div>
-    <div class="actions">${button("heat", "Heat extruder")} ${button("heat-next", "Continue", "secondary")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.step_2")}</span><h2>${msg("ui.heat_the_extruder")}</h2>
+    <p>${msg("ui.choose_a_temperature_suitable_for_the_loaded_filament_continue_only")}</p>
+    <label for="heat-input">${msg("ui.target_temperature_5_c_increments")}</label><div class="input-row"><input id="heat-input" type="number" min="${minimum}" max="300" value="${suggested}" step="5"><span class="unit">${msg("ui.c")}</span></div>
+    <div class="actions">${button("heat", msg("ui.heat_extruder"))} ${button("heat-next", msg("ui.continue"), "secondary")}</div>`;
   bind("heat", async () => {
     const temperature = Number(document.querySelector("#heat-input").value);
-    if (!Number.isFinite(temperature) || temperature % 5 !== 0) throw new Error("Choose a temperature in 5 °C increments.");
-    await api("wizards/extruder/heat", { temperature }); document.querySelector("#heat").textContent = "Heating…";
+    if (!Number.isFinite(temperature) || temperature % 5 !== 0) throw new LocalizedError("ui.choose_a_temperature_in_5_c_increments");
+    await api("wizards/extruder/heat", { temperature }); setText(document.querySelector("#heat"), () => t("ui.heating"));
   });
   bind("heat-next", async () => { await api("wizards/extruder/ready"); mark(); });
 }
 
 function mark() {
   setProgress(2);
-  panel.innerHTML = `<span class="kicker">Step 3</span><h2>Mark the filament</h2>
-    <p>Load filament, choose an unambiguous fixed reference point at the extruder entrance, then measure and mark exactly <strong>${session.mark_distance} mm</strong> above it.</p>
-    <div class="detail-grid"><div class="detail"><span>Mark distance</span><strong>${session.mark_distance} mm</strong></div><div class="detail"><span>Next extrusion</span><strong>${session.commanded_extrusion} mm</strong></div></div>
-    <div class="actions">${button("marked", "Mark is ready")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.step_3")}</span><h2>${msg("ui.mark_the_filament")}</h2>
+    <p>${msg("ui.load_filament_choose_an_unambiguous_fixed_reference_point_at_the")} <strong>${msg("ui.value_mm_2", {value0: session.mark_distance})}</strong> ${msg("ui.above_it")}</p>
+    <div class="detail-grid"><div class="detail"><span>${msg("ui.mark_distance")}</span><strong>${msg("ui.value_mm_3", {value1: session.mark_distance})}</strong></div><div class="detail"><span>${msg("ui.next_extrusion")}</span><strong>${msg("ui.value_mm_4", {value2: session.commanded_extrusion})}</strong></div></div>
+    <div class="actions">${button("marked", msg("ui.mark_is_ready"))}</div>`;
   bind("marked", extrusion);
 }
 
 function extrusion() {
   setProgress(3);
-  panel.innerHTML = `<span class="kicker">Step 4 · Motion</span><h2>Extrude ${session.commanded_extrusion} mm</h2>
-    <p>The extruder will move slowly at 1 mm/s. Klipper's cold-extrusion protection and printer state are checked again immediately before motion.</p>
-    <div class="actions">${button("extrude", `Extrude ${session.commanded_extrusion} mm`)}</div>`;
-  bind("extrude", async () => { document.querySelector("#extrude").innerHTML = '<span class="spinner"></span>Extruding…'; await api("wizards/extruder/extrude"); measure(false); });
+  panel.innerHTML = `<span class="kicker">${msg("ui.step_4_motion")}</span><h2>${msg("ui.extrude_value_mm", {distance: session.commanded_extrusion})}</h2>
+    <p>${msg("ui.the_extruder_will_move_slowly_at_1_mm_s_klipper")}</p>
+    <div class="actions">${button("extrude", msg("ui.extrude_value_mm", {distance: session.commanded_extrusion}))}</div>`;
+  bind("extrude", async () => { document.querySelector("#extrude").innerHTML = `<span class="spinner"></span>${msg("ui.extruding")}`; await api("wizards/extruder/extrude"); measure(false); });
 }
 
 function measure(verification) {
   setProgress(verification ? 6 : 4);
-  panel.innerHTML = `<span class="kicker">${verification ? "Verification" : "Step 5"}</span><h2>Measure the remainder</h2>
-    <p>Measure from the same fixed reference point to the filament mark. Enter the remaining distance as precisely as possible.</p>
-    <label for="remaining">Remaining distance</label><div class="input-row"><input id="remaining" inputmode="decimal" type="number" min="0" max="${session.mark_distance}" step="0.01" placeholder="20.00"><span class="unit">mm</span></div>
-    <div class="actions">${button("calculate", verification ? "Check result" : "Calculate")}</div>`;
+  panel.innerHTML = `<span class="kicker">${verification ? msg("ui.verification") : msg("ui.step_5")}</span><h2>${msg("ui.measure_the_remainder")}</h2>
+    <p>${msg("ui.measure_from_the_same_fixed_reference_point_to_the_filament")}</p>
+    <label for="remaining">${msg("ui.remaining_distance")}</label><div class="input-row"><input id="remaining" inputmode="decimal" type="number" min="0" max="${session.mark_distance}" step="0.01" placeholder="20.00"><span class="unit">mm</span></div>
+    <div class="actions">${button("calculate", verification ? msg("ui.check_result") : msg("ui.calculate"))}</div>`;
   bind("calculate", async () => {
     const value = Number(document.querySelector("#remaining").value);
-    if (!Number.isFinite(value)) throw new Error("Enter a valid remaining distance.");
+    if (!Number.isFinite(value)) throw new LocalizedError("ui.enter_a_valid_remaining_distance");
     await api(verification ? "wizards/extruder/verify/measurement" : "wizards/extruder/measurement", { remaining_distance: value });
     result(verification);
   });
@@ -949,13 +940,13 @@ function measure(verification) {
 function result(verification = false) {
   setProgress(verification ? 7 : 5);
   const r = verification ? session.verification_result : session.result;
-  const warnings = r.warnings.length ? `<ul class="warning-list">${r.warnings.map((w) => `<li>${w}</li>`).join("")}</ul>` : "";
-  panel.innerHTML = `<span class="kicker">${verification ? "Verification result" : "Calculated result"}</span><h2>${r.safe_to_apply ? "Measurement looks plausible" : "Please check the measurement"}</h2>
+  const warnings = r.warnings.length ? `<ul class="warning-list">${r.warnings.map((w, index) => `<li>${r.warning_keys?.[index] ? msg(r.warning_keys[index]) : esc(w)}</li>`).join("")}</ul>` : "";
+  panel.innerHTML = `<span class="kicker">${verification ? msg("ui.verification_result") : msg("ui.calculated_result")}</span><h2>${r.safe_to_apply ? msg("ui.measurement_looks_plausible") : msg("ui.please_check_the_measurement")}</h2>
     <div class="result-grid">
-      <div class="metric"><span>Requested</span><strong>${r.requested_extrusion.toFixed(2)} mm</strong></div><div class="metric"><span>Actual</span><strong>${r.actual_extrusion.toFixed(2)} mm</strong></div>
-      <div class="metric"><span>Deviation</span><strong>${r.deviation_mm.toFixed(2)} mm · ${r.deviation_percent.toFixed(2)}%</strong></div><div class="metric"><span>${verification ? "Tested rotation distance" : "New rotation distance"}</span><strong>${r.new_rotation_distance.toFixed(5)} mm</strong></div>
+      <div class="metric"><span>${msg("ui.requested")}</span><strong>${msg("ui.value_mm_4", {value2: r.requested_extrusion.toFixed(2)})}</strong></div><div class="metric"><span>${msg("ui.actual")}</span><strong>${msg("ui.value_mm", {value3: r.actual_extrusion.toFixed(2)})}</strong></div>
+      <div class="metric"><span>${msg("ui.deviation")}</span><strong>${msg("ui.value_mm_value", {value4: r.deviation_mm.toFixed(2), value5: r.deviation_percent.toFixed(2)})}</strong></div><div class="metric"><span>${verification ? msg("ui.tested_rotation_distance") : msg("ui.new_rotation_distance")}</span><strong>${msg("ui.value_mm_5", {value7: r.new_rotation_distance.toFixed(5)})}</strong></div>
     </div>${warnings}
-    <div class="actions">${!verification && r.safe_to_apply ? button("apply", "Apply temporarily") : ""} ${!verification ? button("again", "Measure again", "secondary") : button("save-view", "Continue to save", "secondary")}</div>`;
+    <div class="actions">${!verification && r.safe_to_apply ? button("apply", msg("ui.apply_temporarily")) : ""} ${!verification ? button("again", msg("ui.measure_again"), "secondary") : button("save-view", msg("ui.continue_to_save"), "secondary")}</div>`;
   bind("apply", async () => { await api("wizards/extruder/apply"); verify(); });
   bind("again", async () => { await api("wizards/extruder/measure-again"); mark(); });
   bind("save-view", saveView);
@@ -963,8 +954,8 @@ function result(verification = false) {
 
 function verify() {
   setProgress(6);
-  panel.innerHTML = `<span class="kicker">Step 7 · Optional</span><h2>Verify the new value</h2><p>The new rotation distance is active until Klipper restarts. You can repeat the measurement before saving, or proceed directly to the explicit save confirmation.</p>
-    <div class="actions">${button("verify", `Extrude ${session.commanded_extrusion} mm again`)} ${button("skip", "Skip verification", "secondary")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.step_7_optional")}</span><h2>${msg("ui.verify_the_new_value")}</h2><p>${msg("ui.the_new_rotation_distance_is_active_until_klipper_restarts_you")}</p>
+    <div class="actions">${button("verify", msg("ui.extrude_value_mm_again", {distance: session.commanded_extrusion}))} ${button("skip", msg("ui.skip_verification"), "secondary")}</div>`;
   bind("verify", async () => { await api("wizards/extruder/verify/extrude"); measure(true); });
   bind("skip", saveView);
 }
@@ -972,17 +963,17 @@ function verify() {
 function saveView() {
   setProgress(7);
   const canSave = Boolean(session.save_token && session.config_source);
-  panel.innerHTML = `<span class="kicker">Step 8 · Permanent change</span><h2>Save configuration</h2>
-    <p>A timestamped backup is created first. Only the exact <code>rotation_distance</code> setting in its source include file is changed.</p>
-    <div class="result-grid"><div class="metric"><span>Old value</span><strong>${session.old_rotation_distance.toFixed(8)}</strong></div><div class="metric"><span>New value</span><strong>${session.result.new_rotation_distance.toFixed(8)}</strong></div></div>
-    <p>${canSave ? `Source: <code>${session.config_source}</code>` : "Permanent writes are unavailable because the source setting could not be resolved. The temporary value remains active until restart."}</p>
-    <label><input id="confirm" type="checkbox" style="width:auto"> I confirm these old and new values and want to change the Klipper configuration.</label>
-    <div class="actions">${button("save", "Save configuration", canSave ? "" : "secondary")}</div>`;
+  panel.innerHTML = `<span class="kicker">${msg("ui.step_8_permanent_change")}</span><h2>${msg("ui.save_configuration")}</h2>
+    <p>${msg("ui.a_timestamped_backup_is_created_first_only_the_exact")} <code>rotation_distance</code> ${msg("ui.setting_in_its_source_include_file_is_changed")}</p>
+    <div class="result-grid"><div class="metric"><span>${msg("ui.old_value")}</span><strong>${session.old_rotation_distance.toFixed(8)}</strong></div><div class="metric"><span>${msg("ui.new_value")}</span><strong>${session.result.new_rotation_distance.toFixed(8)}</strong></div></div>
+    <p>${canSave ? `${msg("ui.source_2")} <code>${session.config_source}</code>` : msg("ui.permanent_writes_are_unavailable_because_the_source_setting_could_not")}</p>
+    <label><input id="confirm" type="checkbox" style="width:auto"> ${msg("ui.i_confirm_these_old_and_new_values_and_want_to")}</label>
+    <div class="actions">${button("save", msg("ui.save_configuration"), canSave ? "" : "secondary")}</div>`;
   document.querySelector("#save").disabled = !canSave;
   bind("save", async () => {
-    if (!document.querySelector("#confirm").checked) throw new Error("Confirm the permanent configuration change first.");
+    if (!document.querySelector("#confirm").checked) throw new LocalizedError("ui.confirm_the_permanent_configuration_change_first");
     const response = await api("wizards/extruder/save", { confirmation_token: session.save_token, old_rotation_distance: session.old_rotation_distance, new_rotation_distance: session.result.new_rotation_distance });
-    panel.innerHTML = `<span class="kicker">Complete</span><h2>Calibration saved</h2><p>${response.message}</p><p>The runtime value is already active. The backup can be restored as described in the installation guide.</p>`;
+    panel.innerHTML = `<span class="kicker">${msg("ui.complete")}</span><h2>${msg("ui.calibration_saved")}</h2><p>${response.message_key ? msg(response.message_key, response.message_params) : esc(response.message)}</p><p>${msg("ui.the_runtime_value_is_already_active_the_backup_can_be")}</p>`;
   });
 }
 
@@ -991,25 +982,25 @@ document.querySelector("#cancel").addEventListener("click", async () => {
     if (session && activeWizard === "extruder") await api("wizards/extruder/cancel");
     else if (session && activeWizard) await calibrationAction("cancel");
     session = null; dashboard();
-  } catch (error) { showError(error.message); }
+  } catch (error) { showError(error); }
 });
 
-function resumedRunningPage(id, title = "Kalibrierung läuft") {
+function resumedRunningPage(id, title = msg("ui.calibration_running")) {
   if (id === "extruder") {
-    setSteps("Extruder kalibrieren", t("steps"));
+    setSteps(msg("welcomeTitle"), t("steps").map(key => msg(key)));
     setProgress(session.state === "VERIFYING" ? 6 : 3);
   } else {
     const steps = {pid:1, bed_mesh:2, screws_tilt:1, z_tilt:2, quad_gantry_level:2, input_shaper:2};
     genericFrame(id, session.state === "HOMING" ? 1 : (steps[id] ?? 1));
   }
   const selection = id === "pid" ? pidSelectionSummary() : "";
-  panel.innerHTML=`<span class="kicker">Laufende Kalibrierung</span><h2>${title}</h2>${selection}<p>Der Drucker führt den laufenden Schritt weiter aus. Diese Ansicht wechselt automatisch zum nächsten Schritt, sobald Klipper fertig ist.</p><div class="running-state"><span class="spinner"></span><strong>Bitte warten…</strong></div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.calibration_in_progress")}</span><h2>${title}</h2>${selection}<p>${msg("ui.the_printer_continues_the_active_step_this_view_will_advance")}</p><div class="running-state"><span class="spinner"></span><strong>${msg("ui.please_wait")}</strong></div>`;
 }
 
 function resumedErrorPage(id) {
-  if (id === "extruder") { setSteps("Extruder kalibrieren", t("steps")); setProgress(0); }
+  if (id === "extruder") { setSteps(msg("welcomeTitle"), t("steps").map(key => msg(key))); setProgress(0); }
   else genericFrame(id, 0);
-  panel.innerHTML=`<span class="kicker">Kalibrierung unterbrochen</span><h2>Der Ablauf kann nicht fortgesetzt werden</h2><p>${esc(session.error || "Klipper hat während der Kalibrierung einen Fehler gemeldet.")}</p><div class="actions">${button("dashboard","Zur Übersicht")}</div>`;
+  panel.innerHTML=`<span class="kicker">${msg("ui.calibration_interrupted")}</span><h2>${msg("ui.the_workflow_cannot_continue")}</h2><p>${session.error_key ? msg(session.error_key, session.error_params) : session.error ? esc(session.error) : msg("ui.klipper_reported_an_error_during_calibration")}</p><div class="actions">${button("dashboard",msg("navigation.overview"))}</div>`;
   bind("dashboard",dashboard);
 }
 
@@ -1018,14 +1009,14 @@ function renderResumedExtruder() {
     case "IDLE": heat(); break;
     case "HEATING": heat(); break;
     case "READY": mark(); break;
-    case "RUNNING": resumedRunningPage("extruder", "Extrusion läuft"); break;
+    case "RUNNING": resumedRunningPage("extruder", msg("ui.extrusion_running")); break;
     case "WAITING_FOR_MEASUREMENT": measure(false); break;
     case "CALCULATED": result(false); break;
     case "APPLIED": verify(); break;
-    case "VERIFYING": resumedRunningPage("extruder", "Prüfextrusion läuft"); break;
+    case "VERIFYING": resumedRunningPage("extruder", msg("ui.verification_extrusion_running")); break;
     case "COMPLETE":
       if (session.verification_result && session.save_token) result(true);
-      else { setSteps("Extruder kalibrieren", t("steps")); setProgress(7); completePage("Extruder-Kalibrierung", true); }
+      else { setSteps(msg("welcomeTitle"), t("steps").map(key => msg(key))); setProgress(7); completePage(msg("ui.extruder_calibration_2"), true); }
       break;
     case "ERROR": resumedErrorPage("extruder"); break;
     default: dashboard();
@@ -1035,21 +1026,21 @@ function renderResumedExtruder() {
 function renderResumedGeneric(id) {
   const state = session.state;
   if (state === "ERROR") return resumedErrorPage(id);
-  if (state === "HOMING") return resumedRunningPage(id, "Referenzierung läuft");
+  if (state === "HOMING") return resumedRunningPage(id, msg("ui.homing_in_progress"));
   if (state === "RUNNING") return resumedRunningPage(id);
   if (state === "COMPLETE") {
     if (id === "flow" && Number.isFinite(session.data?.result)) return flowResultPage();
     const saved = new Set(["pid", "bed_mesh", "probe_offset", "input_shaper", "pressure_advance"]).has(id);
-    genericFrame(id, (genericSteps[id]?.length || 1) - 1); return completePage(wizards.find(item=>item.id===id)?.name || "Kalibrierung", saved);
+    genericFrame(id, (genericSteps[id]?.length || 1) - 1); return completePage(msg(`wizards.${id}.name`), saved);
   }
   if (id === "pid") {
     if (state === "READY") return pidReadyPage();
-    if (state === "REVIEW") return saveKlipperPage("PID-Werte", "Klipper hat neue PID-Werte ermittelt. Prüfe das Ergebnis und speichere es anschließend explizit.", pidSelectionSummary() + pendingCalibrationValues());
+    if (state === "REVIEW") return saveKlipperPage(msg("ui.pid_values"), msg("ui.klipper_has_calculated_new_pid_values_review_the_result_then"), pidSelectionSummary() + pendingCalibrationValues());
   }
   if (id === "bed_mesh") {
     if (state === "READY") return homingPage(id);
     if (state === "HOMED") return bedMeshRun();
-    if (state === "REVIEW") return saveKlipperPage("Bed Mesh", "Das neue Mesh ist berechnet. Mit SAVE_CONFIG wird es dauerhaft in Klipper gespeichert.", bedMeshSummary() + pendingCalibrationValues());
+    if (state === "REVIEW") return saveKlipperPage(msg("ui.bed_mesh"), msg("ui.the_new_mesh_is_calculated_save_config_saves_it_permanently"), bedMeshSummary() + pendingCalibrationValues());
   }
   if (id === "screws_tilt") {
     if (state === "READY") return homingPage(id);
@@ -1065,7 +1056,7 @@ function renderResumedGeneric(id) {
     if (state === "READY") return homingPage(id);
     if (state === "HOMED") return probeRun();
     if (state === "ADJUSTING") return probeAdjust();
-    if (state === "REVIEW") return saveKlipperPage("Probe Z-Offset", "Der Offset ist übernommen, aber noch nicht dauerhaft gespeichert.", pendingCalibrationValues());
+    if (state === "REVIEW") return saveKlipperPage(msg("ui.probe_z_offset"), msg("ui.the_offset_is_applied_but_has_not_been_saved_permanently"), pendingCalibrationValues());
   }
   if (id === "z_tilt" || id === "quad_gantry_level") {
     if (state === "READY") return homingPage(id);
@@ -1075,14 +1066,14 @@ function renderResumedGeneric(id) {
     if (state === "READY") return pressurePrint();
     if (state === "PRINT_TOWER") return pressureMeasure();
     if (state === "CALCULATED") return pressureResult();
-    if (state === "APPLIED") return saveLocalPage("Pressure Advance",`Neuer Wert: ${session.data.value.toFixed(6)}`);
+    if (state === "APPLIED") return saveLocalPage(msg("ui.pressure_advance"),msg("ui.new_value_value", {value0: session.data.value.toFixed(6)}));
   }
   if (id === "input_shaper") {
     if (state === "READY") return shaperSetup();
-    if (state === "CHECKING") return resumedRunningPage(id, "Beschleunigungssensor wird geprüft");
+    if (state === "CHECKING") return resumedRunningPage(id, msg("ui.checking_accelerometer"));
     if (state === "SENSOR_READY") return shaperHome();
     if (state === "HOMED") return shaperRun();
-    if (state === "REVIEW") return saveKlipperPage("Input Shaper", "Klipper hat passende Shaper berechnet. Mit SAVE_CONFIG werden sie dauerhaft übernommen.", pendingCalibrationValues());
+    if (state === "REVIEW") return saveKlipperPage(msg("ui.input_shaper"), msg("ui.klipper_has_calculated_suitable_shapers_save_config_saves_them_permanently"), pendingCalibrationValues());
   }
   if (id === "flow" && state === "READY") return flowSetup();
   dashboard();
@@ -1118,7 +1109,7 @@ function updateStatus(data) {
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
   updateCalibrationStatusStrip();
   connection.className = `connection ${printer.connected ? "online" : "offline"}`;
-  document.querySelector("#connection").textContent = printer.connected ? "Printer connected" : "Printer offline";
+  setText(document.querySelector("#connection"), () => printer.connected ? t("ui.printer_connected") : t("ui.printer_offline"));
   if (!bootstrapping && pendingResolution() && continueAfterPendingResolution()) return;
   if (!bootstrapping && isOverview && previousReadiness !== printerReadinessKey()) dashboard();
   if (resumeMode && session?.state !== previousSessionState) {
@@ -1133,7 +1124,7 @@ function connect() {
   socket.onmessage = (event) => updateStatus(JSON.parse(event.data));
   socket.onclose = () => {
     connection.className = "connection offline";
-    document.querySelector("#connection").textContent = "Reconnecting";
+    setText(document.querySelector("#connection"), () => t("ui.reconnecting"));
     if (printer) printer = {...printer, connected:false, state:"disconnected", state_message:""};
     if (!bootstrapping && isOverview) dashboard();
     setTimeout(connect, 2000);
@@ -1155,5 +1146,5 @@ Promise.all([
   const restored = await restoreCalibration();
   bootstrapping = false;
   if (!restored) dashboard();
-}).catch((error) => { bootstrapping=false; dashboard(); showError(error.message); });
+}).catch((error) => { bootstrapping=false; dashboard(); showError(error); });
 connect();

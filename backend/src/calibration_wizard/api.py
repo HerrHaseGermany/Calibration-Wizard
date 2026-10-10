@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -34,10 +34,18 @@ from .wizard import WIZARDS, ExtruderWizard, WizardError
 LOGGER = logging.getLogger(__name__)
 
 
+class LocalizedHTTPException(HTTPException):
+    def __init__(self, status_code: int, detail: str, message_key: str):
+        super().__init__(status_code=status_code, detail=detail)
+        self.message_key = message_key
+
+
 def _check_same_origin(request: Request) -> None:
     origin = request.headers.get("origin")
     if origin and urlsplit(origin).netloc != request.headers.get("host"):
-        raise HTTPException(status_code=403, detail="Cross-origin state changes are not allowed")
+        raise LocalizedHTTPException(
+            403, "Cross-origin state changes are not allowed", "errors.cross_origin"
+        )
 
 
 def create_app(
@@ -81,10 +89,23 @@ def create_app(
 
     @app.exception_handler(WizardError)
     async def wizard_error_handler(_request: Request, exc: WizardError):
-        from fastapi.responses import JSONResponse
-
         LOGGER.warning("Wizard request rejected: %s", exc)
-        return JSONResponse(status_code=409, content={"detail": str(exc), "code": "wizard_error"})
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "code": "wizard_error",
+                "message_key": exc.message_key,
+                "message_params": exc.message_params,
+            },
+        )
+
+    @app.exception_handler(LocalizedHTTPException)
+    async def http_error_handler(_request: Request, exc: LocalizedHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "message_key": exc.message_key, "message_params": {}},
+        )
 
     @app.get("/api/status")
     async def status():
@@ -110,13 +131,20 @@ def create_app(
     async def require_pending_config() -> None:
         snapshot = await printer.snapshot()
         if not snapshot.connected or snapshot.state != "ready":
-            raise WizardError("Klipper muss bereit sein, um offene Konfigurationswerte aufzulösen.")
+            raise WizardError(
+                "Klipper muss bereit sein, um offene Konfigurationswerte aufzulösen.",
+                message_key="ui.klipper_must_be_ready_to_resolve_pending_configuration_values",
+            )
         if snapshot.print_state in {"printing", "paused"}:
             raise WizardError(
-                "Offene Konfigurationswerte können nicht während eines Drucks aufgelöst werden."
+                "Offene Konfigurationswerte können nicht während eines Drucks aufgelöst werden.",
+                message_key="ui.pending_configuration_values_cannot_be_resolved_during_a_print",
             )
         if not snapshot.save_config_pending:
-            raise WizardError("Klipper hat keine ungespeicherten SAVE_CONFIG-Werte.")
+            raise WizardError(
+                "Klipper hat keine ungespeicherten SAVE_CONFIG-Werte.",
+                message_key="ui.klipper_has_no_unsaved_save_config_values",
+            )
 
     @app.post("/api/pending-config/save")
     async def save_pending_config(request: Request):
@@ -139,13 +167,22 @@ def create_app(
     async def require_filament_ready():
         snapshot = await printer.snapshot()
         if not snapshot.connected or snapshot.state != "ready":
-            raise WizardError("Klipper muss für den Filamentwechsel bereit sein.")
+            raise WizardError(
+                "Klipper muss für den Filamentwechsel bereit sein.",
+                message_key="ui.klipper_must_be_ready_for_a_filament_change",
+            )
         if snapshot.print_state == "printing":
-            raise WizardError("Filamentwechsel ist während eines laufenden Drucks gesperrt.")
+            raise WizardError(
+                "Filamentwechsel ist während eines laufenden Drucks gesperrt.",
+                message_key="ui.filament_changes_are_blocked_while_printing",
+            )
         terminal = {"COMPLETE", "CANCELLED", "ERROR"}
         sessions = [wizard.session, *calibrations.sessions.values()]
         if any(item and item.state not in terminal for item in sessions):
-            raise WizardError("Beende zuerst die laufende Kalibrierung.")
+            raise WizardError(
+                "Beende zuerst die laufende Kalibrierung.",
+                message_key="ui.finish_the_active_calibration_first",
+            )
         return snapshot
 
     @app.post("/api/tools/filament/heat")
@@ -153,11 +190,17 @@ def create_app(
         nonlocal filament_job
         _check_same_origin(request)
         if filament_lock.locked():
-            raise WizardError("Filamentbewegung läuft bereits.")
+            raise WizardError(
+                "Filamentbewegung läuft bereits.",
+                message_key="ui.a_filament_move_is_already_running",
+            )
         async with filament_lock:
             snapshot = await require_filament_ready()
             if payload.temperature and payload.temperature < snapshot.min_extrude_temp:
-                raise WizardError("Zieltemperatur liegt unter der Mindest-Extrusionstemperatur.")
+                raise WizardError(
+                    "Zieltemperatur liegt unter der Mindest-Extrusionstemperatur.",
+                    message_key="ui.target_temperature_is_below_the_minimum_extrusion_temperature",
+                )
             try:
                 config_status = await printer.query_objects({"configfile": ["settings"]})
                 extruder_settings = (
@@ -167,10 +210,13 @@ def create_app(
                 )
                 maximum = float(extruder_settings.get("max_temp", 300))
                 if payload.temperature and payload.temperature >= maximum:
-                    raise WizardError("Zieltemperatur muss unter Klippers max_temp liegen.")
+                    raise WizardError(
+                        "Zieltemperatur muss unter Klippers max_temp liegen.",
+                        message_key="ui.target_temperature_must_be_below_klipper_s_max_temp",
+                    )
                 await printer.heat(snapshot.extruder, payload.temperature)
             except PrinterError as exc:
-                raise WizardError(str(exc)) from exc
+                raise WizardError(exc) from exc
             filament_job = (
                 {
                     "token": secrets.token_urlsafe(32),
@@ -195,9 +241,14 @@ def create_app(
         nonlocal filament_job, filament_progress
         _check_same_origin(request)
         if direction not in {"load", "unload"}:
-            raise HTTPException(status_code=404, detail="Unknown filament action")
+            raise LocalizedHTTPException(
+                404, "Unknown filament action", "errors.unknown_filament_action"
+            )
         if filament_lock.locked():
-            raise WizardError("Filamentbewegung läuft bereits.")
+            raise WizardError(
+                "Filamentbewegung läuft bereits.",
+                message_key="ui.a_filament_move_is_already_running",
+            )
         async with filament_lock:
             snapshot = await require_filament_ready()
             if (
@@ -206,14 +257,23 @@ def create_app(
                 or filament_job["direction"] != direction
                 or filament_job["extruder"] != snapshot.extruder
             ):
-                raise WizardError("Starte den Filamentvorgang erneut.")
+                raise WizardError(
+                    "Starte den Filamentvorgang erneut.",
+                    message_key="ui.start_the_filament_process_again",
+                )
             if not snapshot.can_extrude or snapshot.temperature < snapshot.min_extrude_temp:
-                raise WizardError("Das Hotend hat die Mindest-Extrusionstemperatur nicht erreicht.")
+                raise WizardError(
+                    "Das Hotend hat die Mindest-Extrusionstemperatur nicht erreicht.",
+                    message_key="ui.the_hotend_has_not_reached_the_minimum_extrusion_temperature",
+                )
             if (
                 abs(snapshot.target - filament_job["temperature"]) > 0.1
                 or snapshot.temperature < filament_job["temperature"] - 2
             ):
-                raise WizardError("Die gewählte Zieltemperatur ist noch nicht erreicht.")
+                raise WizardError(
+                    "Die gewählte Zieltemperatur ist noch nicht erreicht.",
+                    message_key="ui.the_selected_target_temperature_has_not_been_reached_yet",
+                )
             filament_job = None
             total = 102 if direction == "load" else 105
             filament_progress = {
@@ -242,7 +302,7 @@ def create_app(
                         }
             except PrinterError as exc:
                 filament_progress = {**filament_progress, "state": "error"}
-                raise WizardError(str(exc)) from exc
+                raise WizardError(exc) from exc
             filament_progress = {**filament_progress, "state": "complete"}
         return {"status": "complete", "direction": direction, "distance": 100}
 
@@ -255,7 +315,10 @@ def create_app(
     async def start(payload: StartRequest, request: Request):
         _check_same_origin(request)
         if filament_lock.locked():
-            raise WizardError("Filamentbewegung läuft bereits.")
+            raise WizardError(
+                "Filamentbewegung läuft bereits.",
+                message_key="ui.a_filament_move_is_already_running",
+            )
         return await wizard.start(payload.mark_distance, payload.commanded_extrusion)
 
     @app.post("/api/wizards/extruder/heat")
@@ -306,7 +369,12 @@ def create_app(
             payload.old_rotation_distance,
             payload.new_rotation_distance,
         )
-        return {"session": session, "message": message}
+        return {
+            "session": session,
+            "message": message,
+            "message_key": message.message_key,
+            "message_params": message.message_params,
+        }
 
     @app.post("/api/wizards/extruder/cancel")
     async def cancel(request: Request):
@@ -321,7 +389,10 @@ def create_app(
     async def calibration_start(wizard_id: str, payload: CalibrationStartRequest, request: Request):
         _check_same_origin(request)
         if filament_lock.locked():
-            raise WizardError("Filamentbewegung läuft bereits.")
+            raise WizardError(
+                "Filamentbewegung läuft bereits.",
+                message_key="ui.a_filament_move_is_already_running",
+            )
         return await calibrations.start(wizard_id, payload.options)
 
     @app.post("/api/wizards/{wizard_id}/action")
@@ -386,7 +457,9 @@ def create_app(
     async def frontend_route(path: str):
         index = frontend / "index.html"
         if not index.is_file():
-            raise HTTPException(status_code=404, detail="Frontend is not installed")
+            raise LocalizedHTTPException(
+                404, "Frontend is not installed", "errors.frontend_missing"
+            )
         requested = (frontend / path).resolve()
         try:
             requested.relative_to(frontend.resolve())

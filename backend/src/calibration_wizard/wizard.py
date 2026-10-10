@@ -8,11 +8,12 @@ from pathlib import Path
 
 from .calculation import ValidationError, calculate_rotation_distance
 from .configuration import ConfigError, KlipperConfigRepository
+from .errors import LocalizedErrorMixin, Message
 from .models import PrinterSnapshot, WizardSession, WizardState
 from .printer import PrinterAdapter, PrinterError
 
 
-class WizardError(RuntimeError):
+class WizardError(LocalizedErrorMixin, RuntimeError):
     pass
 
 
@@ -73,11 +74,16 @@ class ExtruderWizard:
 
     def _require(self, *states: WizardState) -> WizardSession:
         if self.session is None:
-            raise WizardError("No calibration session is active")
+            raise WizardError(
+                "No calibration session is active",
+                message_key="ui.no_calibration_session_is_active",
+            )
         if self.session.state not in states:
             expected = ", ".join(state.value for state in states)
             raise WizardError(
-                f"Action is not allowed in {self.session.state.value}; expected {expected}"
+                f"Action is not allowed in {self.session.state.value}; expected {expected}",
+                message_key="ui.action_is_not_allowed_in_value_expected_value",
+                message_params={"state": self.session.state.value, "expected": expected},
             )
         return self.session
 
@@ -87,27 +93,48 @@ class ExtruderWizard:
             if self.session:
                 self.session.state = WizardState.ERROR
                 self.session.error = "Printer connection lost"
-            raise WizardError("Printer connection lost")
+                self.session.error_key = "ui.printer_connection_lost"
+            raise WizardError("Printer connection lost", message_key="ui.printer_connection_lost")
         if snapshot.state != "ready":
             if self.session:
                 self.session.state = WizardState.ERROR
                 self.session.error = f"Klipper state is {snapshot.state}"
-            raise WizardError(f"Klipper must be ready (current state: {snapshot.state})")
+                self.session.error_key = "ui.klipper_state_is_value"
+                self.session.error_params = {"state": snapshot.state}
+            raise WizardError(
+                f"Klipper must be ready (current state: {snapshot.state})",
+                message_key="ui.klipper_must_be_ready_current_state_value",
+                message_params={"state": snapshot.state},
+            )
         if snapshot.print_state in {"printing", "paused"}:
-            raise WizardError("Extruder calibration is blocked while a print is active or paused")
+            raise WizardError(
+                "Extruder calibration is blocked while a print is active or paused",
+                message_key="ui.extruder_calibration_is_blocked_while_a_print_is_active_or",
+            )
         return snapshot
 
     async def start(self, mark_distance: float, commanded_extrusion: float) -> WizardSession:
         if mark_distance <= 0 or commanded_extrusion <= 0:
-            raise WizardError("Distances must be positive")
+            raise WizardError(
+                "Distances must be positive", message_key="ui.distances_must_be_positive"
+            )
         if mark_distance <= commanded_extrusion:
-            raise WizardError("Mark distance must be greater than extrusion distance")
+            raise WizardError(
+                "Mark distance must be greater than extrusion distance",
+                message_key="ui.mark_distance_must_be_greater_than_extrusion_distance",
+            )
         if mark_distance > 1000 or commanded_extrusion > 500:
-            raise WizardError("Requested distances exceed safety limits")
+            raise WizardError(
+                "Requested distances exceed safety limits",
+                message_key="ui.requested_distances_exceed_safety_limits",
+            )
         async with self._lock:
             snapshot = await self._safe_snapshot()
             if snapshot.rotation_distance <= 0:
-                raise WizardError("Klipper did not report a valid rotation_distance")
+                raise WizardError(
+                    "Klipper did not report a valid rotation_distance",
+                    message_key="ui.klipper_did_not_report_a_valid_rotation_distance",
+                )
             self.session = WizardSession(
                 id=secrets.token_urlsafe(16),
                 state=WizardState.IDLE,
@@ -129,9 +156,16 @@ class ExtruderWizard:
         snapshot = await self._safe_snapshot()
         minimum = max(snapshot.min_extrude_temp, 150.0)
         if temperature < minimum or temperature > 300:
-            raise WizardError(f"Temperature must be between {minimum:.0f} and 300 °C")
+            raise WizardError(
+                f"Temperature must be between {minimum:.0f} and 300 °C",
+                message_key="ui.temperature_must_be_between_value_and_300_c",
+                message_params={"minimum": format(minimum, ".0f")},
+            )
         if abs(temperature / 5 - round(temperature / 5)) > 1e-9:
-            raise WizardError("Temperature must be selected in 5 °C increments")
+            raise WizardError(
+                "Temperature must be selected in 5 °C increments",
+                message_key="ui.temperature_must_be_selected_in_5_c_increments",
+            )
         await self.printer.heat(session.extruder, temperature)
         session.state = WizardState.HEATING
         return session
@@ -140,7 +174,10 @@ class ExtruderWizard:
         session = self._require(WizardState.HEATING, WizardState.READY)
         snapshot = await self._safe_snapshot()
         if not snapshot.can_extrude or snapshot.temperature < snapshot.min_extrude_temp:
-            raise WizardError("The hotend has not reached a safe extrusion temperature")
+            raise WizardError(
+                "The hotend has not reached a safe extrusion temperature",
+                message_key="ui.the_hotend_has_not_reached_a_safe_extrusion_temperature",
+            )
         session.state = WizardState.READY
         return session
 
@@ -149,7 +186,10 @@ class ExtruderWizard:
         session = self._require(*allowed)
         snapshot = await self._safe_snapshot()
         if not snapshot.can_extrude or snapshot.temperature < snapshot.min_extrude_temp:
-            raise WizardError("Cold extrusion protection is active")
+            raise WizardError(
+                "Cold extrusion protection is active",
+                message_key="ui.cold_extrusion_protection_is_active",
+            )
         session.state = WizardState.VERIFYING if verification else WizardState.RUNNING
         try:
             await self.printer.extrude(
@@ -158,7 +198,9 @@ class ExtruderWizard:
         except PrinterError as exc:
             session.state = WizardState.ERROR
             session.error = str(exc)
-            raise WizardError(str(exc)) from exc
+            session.error_key = exc.message_key
+            session.error_params = exc.message_params
+            raise WizardError(exc) from exc
         if not verification:
             session.state = WizardState.WAITING_FOR_MEASUREMENT
         return session
@@ -180,7 +222,7 @@ class ExtruderWizard:
                 remaining_distance,
             )
         except (ValidationError, AttributeError) as exc:
-            raise WizardError(str(exc)) from exc
+            raise WizardError(exc) from exc
         if verification:
             session.verification_result = result
             session.state = WizardState.COMPLETE
@@ -192,7 +234,10 @@ class ExtruderWizard:
     async def apply(self) -> WizardSession:
         session = self._require(WizardState.CALCULATED)
         if not session.result or not session.result.safe_to_apply:
-            raise WizardError("Plausibility warnings must be resolved by measuring again")
+            raise WizardError(
+                "Plausibility warnings must be resolved by measuring again",
+                message_key="ui.plausibility_warnings_must_be_resolved_by_measuring_again",
+            )
         await self._safe_snapshot()
         await self.printer.set_rotation_distance(
             session.extruder, session.result.new_rotation_distance
@@ -213,15 +258,29 @@ class ExtruderWizard:
     ) -> tuple[WizardSession, str]:
         session = self._require(WizardState.APPLIED, WizardState.COMPLETE)
         if not self.config:
-            raise WizardError("Permanent configuration writes are disabled")
+            raise WizardError(
+                "Permanent configuration writes are disabled",
+                message_key="ui.permanent_configuration_writes_are_disabled",
+            )
         if not session.result or not session.result.safe_to_apply:
-            raise WizardError("No safe result is available")
+            raise WizardError(
+                "No safe result is available", message_key="ui.no_safe_result_is_available"
+            )
         if not secrets.compare_digest(token, session.save_token or ""):
-            raise WizardError("Save confirmation token is invalid or expired")
+            raise WizardError(
+                "Save confirmation token is invalid or expired",
+                message_key="ui.save_confirmation_token_is_invalid_or_expired",
+            )
         if abs(old_value - session.old_rotation_distance) > 1e-7:
-            raise WizardError("Old value confirmation does not match this session")
+            raise WizardError(
+                "Old value confirmation does not match this session",
+                message_key="ui.old_value_confirmation_does_not_match_this_session",
+            )
         if abs(new_value - session.result.new_rotation_distance) > 1e-7:
-            raise WizardError("New value confirmation does not match this session")
+            raise WizardError(
+                "New value confirmation does not match this session",
+                message_key="ui.new_value_confirmation_does_not_match_this_session",
+            )
         await self._safe_snapshot()
         try:
             source, backup = self.config.update_rotation_distance(
@@ -230,15 +289,23 @@ class ExtruderWizard:
                 session.result.new_rotation_distance,
             )
         except ConfigError as exc:
-            raise WizardError(str(exc)) from exc
+            raise WizardError(exc) from exc
         session.save_token = None
         session.state = WizardState.COMPLETE
-        return session, f"Updated {source}; backup: {backup}"
+        return session, Message(
+            f"Updated {source}; backup: {backup}",
+            "config.updated",
+            source=str(source),
+            backup=str(backup),
+        )
 
     async def cancel(self) -> WizardSession:
         session = self._require(*tuple(WizardState))
         if session.state == WizardState.RUNNING:
-            raise WizardError("Cannot cancel while the synchronous extrusion command is running")
+            raise WizardError(
+                "Cannot cancel while the synchronous extrusion command is running",
+                message_key="ui.cannot_cancel_while_the_synchronous_extrusion_command_is_running",
+            )
         if session.save_token and session.state in {WizardState.APPLIED, WizardState.COMPLETE}:
             await self._safe_snapshot()
             await self.printer.set_rotation_distance(

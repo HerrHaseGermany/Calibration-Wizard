@@ -7,10 +7,11 @@ from typing import Any
 
 import httpx
 
+from .errors import LocalizedErrorMixin
 from .models import PrinterCapabilities, PrinterSnapshot
 
 
-class PrinterError(RuntimeError):
+class PrinterError(LocalizedErrorMixin, RuntimeError):
     pass
 
 
@@ -54,7 +55,7 @@ class MoonrakerPrinter(PrinterAdapter):
         response.raise_for_status()
         payload = response.json()
         if "error" in payload:
-            raise PrinterError(str(payload["error"].get("message", payload["error"])))
+            raise PrinterError(payload["error"].get("message", payload["error"]))
         return payload.get("result", payload)
 
     async def snapshot(self) -> PrinterSnapshot:
@@ -144,7 +145,7 @@ class MoonrakerPrinter(PrinterAdapter):
             )
             await self._result(response)
         except (httpx.HTTPError, ValueError) as exc:
-            raise PrinterError(str(exc)) from exc
+            raise PrinterError(exc) from exc
 
     async def run_gcode(self, script: str, *, long_running: bool = False) -> None:
         await self._gcode(script, long_running=long_running)
@@ -155,7 +156,7 @@ class MoonrakerPrinter(PrinterAdapter):
             result = await self._result(response)
             return result.get("status", {})
         except (httpx.HTTPError, ValueError) as exc:
-            raise PrinterError(str(exc)) from exc
+            raise PrinterError(exc) from exc
 
     async def capabilities(self) -> PrinterCapabilities:
         try:
@@ -192,14 +193,26 @@ class MoonrakerPrinter(PrinterAdapter):
     async def extrude(self, extruder: str, distance: float, speed: float) -> None:
         snapshot = await self.snapshot()
         if not snapshot.connected or snapshot.state != "ready" or not snapshot.can_extrude:
-            raise PrinterError("Klipper is not ready for a safe extrusion")
+            raise PrinterError(
+                "Klipper is not ready for a safe extrusion",
+                message_key="ui.klipper_is_not_ready_for_a_safe_extrusion",
+            )
         if snapshot.print_state == "printing" or snapshot.extruder != extruder:
-            raise PrinterError("Active extruder changed or printer is busy")
+            raise PrinterError(
+                "Active extruder changed or printer is busy",
+                message_key="errors.active_extruder_changed_or_printer_is_busy",
+            )
         if not math.isfinite(distance) or not math.isfinite(speed) or speed <= 0:
-            raise PrinterError("Invalid extrusion distance or speed")
+            raise PrinterError(
+                "Invalid extrusion distance or speed",
+                message_key="errors.invalid_extrusion_distance_or_speed",
+            )
         chunk = min(snapshot.max_extrude_only_distance, 50.0)
         if not math.isfinite(chunk) or chunk <= 0:
-            raise PrinterError("Invalid max_extrude_only_distance reported by Klipper")
+            raise PrinterError(
+                "Invalid max_extrude_only_distance reported by Klipper",
+                message_key="ui.invalid_max_extrude_only_distance_reported_by_klipper",
+            )
         moves: list[float] = []
         remaining = abs(distance)
         while remaining > 1e-6:
@@ -219,7 +232,9 @@ class MoonrakerPrinter(PrinterAdapter):
 
     async def set_rotation_distance(self, extruder: str, distance: float) -> None:
         if not math.isfinite(distance) or distance <= 0:
-            raise PrinterError("Invalid rotation distance")
+            raise PrinterError(
+                "Invalid rotation distance", message_key="ui.invalid_rotation_distance"
+            )
         await self._gcode(
             f"SET_EXTRUDER_ROTATION_DISTANCE EXTRUDER={extruder} DISTANCE={distance:.8f}"
         )
@@ -294,7 +309,10 @@ class MockPrinter(PrinterAdapter):
 
     async def extrude(self, extruder: str, distance: float, speed: float) -> None:
         if not (await self.snapshot()).can_extrude:
-            raise PrinterError("Mock hotend is not ready to extrude")
+            raise PrinterError(
+                "Mock hotend is not ready to extrude",
+                message_key="ui.mock_hotend_is_not_ready_to_extrude",
+            )
         self.extrusions.append(distance)
         await asyncio.sleep(0)
 

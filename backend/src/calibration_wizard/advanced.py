@@ -59,10 +59,33 @@ class CalibrationManager:
             data = {
                 "id": definition.id,
                 "name": definition.name,
+                "name_key": f"wizards.{definition.id}.name",
                 "description": definition.description,
+                "description_key": f"wizards.{definition.id}.description",
                 "available": available if definition.id != "extruder" else True,
                 "required_features": definition.required_features,
                 "availability_reason": reason,
+                "availability_key": (
+                    "availability.input_shaper"
+                    if not available and definition.id == "input_shaper"
+                    else "availability.missing"
+                    if not available
+                    else None
+                ),
+                "availability_params": {
+                    "features": ", ".join(
+                        [
+                            command
+                            for command in CAPABILITY_REQUIREMENTS.get(definition.id, ((), ()))[0]
+                            if not caps.has_command(command)
+                        ]
+                        + [
+                            f"[{section}]"
+                            for section in CAPABILITY_REQUIREMENTS.get(definition.id, ((), ()))[1]
+                            if section not in caps.settings
+                        ]
+                    )
+                },
                 "setup_available": definition.id
                 in {
                     "bed_mesh",
@@ -101,8 +124,10 @@ class CalibrationManager:
     @staticmethod
     def _position_layout(wizard: str, settings: dict[str, Any]) -> list[dict[str, Any]]:
         section_name = {
-            "screws_tilt": "screws_tilt_adjust", "bed_screws": "bed_screws",
-            "z_tilt": "z_tilt", "quad_gantry_level": "quad_gantry_level",
+            "screws_tilt": "screws_tilt_adjust",
+            "bed_screws": "bed_screws",
+            "z_tilt": "z_tilt",
+            "quad_gantry_level": "quad_gantry_level",
         }[wizard]
         section = settings.get(section_name, {})
         if wizard in {"screws_tilt", "bed_screws"}:
@@ -134,24 +159,45 @@ class CalibrationManager:
     async def _safe(self, wizard: str, *, require_clean: bool = False) -> PrinterSnapshot:
         snapshot = await self.printer.snapshot()
         if not snapshot.connected or snapshot.state != "ready":
-            raise WizardError("Klipper muss verbunden und bereit sein")
+            raise WizardError(
+                "Klipper muss verbunden und bereit sein",
+                message_key="ui.klipper_must_be_connected_and_ready",
+            )
         if snapshot.print_state in {"printing", "paused"}:
-            raise WizardError("Während eines Drucks oder einer Pause ist die Aktion gesperrt")
+            raise WizardError(
+                "Während eines Drucks oder einer Pause ist die Aktion gesperrt",
+                message_key="ui.the_action_is_blocked_during_a_print_or_pause",
+            )
         caps = await self.printer.capabilities()
         available, reason = availability(wizard, caps)
         if not available:
-            raise WizardError(reason or "Kalibrierung ist nicht verfügbar")
+            commands, sections = CAPABILITY_REQUIREMENTS.get(wizard, ((), ()))
+            missing = [command for command in commands if not caps.has_command(command)]
+            missing.extend(f"[{section}]" for section in sections if section not in caps.settings)
+            raise WizardError(
+                reason or "Kalibrierung ist nicht verfügbar",
+                message_key=(
+                    "availability.input_shaper"
+                    if wizard == "input_shaper"
+                    else "availability.missing"
+                ),
+                message_params={"features": ", ".join(missing)} if wizard != "input_shaper" else {},
+            )
         if require_clean and snapshot.save_config_pending:
             raise WizardError(
                 "Klipper hat bereits ungespeicherte SAVE_CONFIG-Werte. Speichere oder verwerfe "
-                "diese zuerst, damit die Kalibrierung keine fremden Änderungen übernimmt."
+                "diese zuerst, damit die Kalibrierung keine fremden Änderungen übernimmt.",
+                message_key="ui.klipper_already_has_unsaved_save_config_values_save_or_discard",
             )
         return snapshot
 
     def _session(self, wizard: str) -> CalibrationSession:
         session = self.sessions.get(wizard)
         if not session:
-            raise WizardError("Für diese Kalibrierung ist keine Sitzung aktiv")
+            raise WizardError(
+                "Für diese Kalibrierung ist keine Sitzung aktiv",
+                message_key="ui.no_session_is_active_for_this_calibration",
+            )
         return session
 
     async def start(self, wizard: str, options: dict[str, Any]) -> CalibrationSession:
@@ -160,7 +206,7 @@ class CalibrationManager:
 
     async def _start(self, wizard: str, options: dict[str, Any]) -> CalibrationSession:
         if wizard not in CAPABILITY_REQUIREMENTS:
-            raise WizardError("Unbekannte Kalibrierung")
+            raise WizardError("Unbekannte Kalibrierung", message_key="ui.unknown_calibration")
         if wizard == "flow":
             snapshot = await self.printer.snapshot()
         else:
@@ -173,20 +219,29 @@ class CalibrationManager:
             caps = await self.printer.capabilities()
             heater = str(options.get("heater", "extruder"))
             if heater not in caps.heaters:
-                raise WizardError("Der gewählte Heizer ist nicht konfiguriert")
+                raise WizardError(
+                    "Der gewählte Heizer ist nicht konfiguriert",
+                    message_key="ui.the_selected_heater_is_not_configured",
+                )
             target = self._number(options.get("target", 220 if heater == "extruder" else 60))
             is_extruder = heater.startswith("extruder")
             maximum = 300 if is_extruder else 130
             minimum = 150 if is_extruder else 30
             if target < minimum or target > maximum or target % 5:
                 raise WizardError(
-                    f"Zieltemperatur muss in 5-°C-Schritten zwischen {minimum} und {maximum} liegen"
+                    f"Zieltemperatur muss in 5-°C-Schritten zwischen {minimum} "
+                    f"und {maximum} liegen",
+                    message_key="ui.target_temperature_must_be_in_5_c_increments_between_value",
+                    message_params={"minimum": minimum, "maximum": maximum},
                 )
             data = {"heater": heater, "target": target}
         elif wizard == "pressure_advance":
             style = str(options.get("drive", "direct"))
             if style not in {"direct", "bowden"}:
-                raise WizardError("Extruder-Typ muss Direct Drive oder Bowden sein")
+                raise WizardError(
+                    "Extruder-Typ muss Direct Drive oder Bowden sein",
+                    message_key="ui.the_extruder_type_must_be_direct_drive_or_bowden",
+                )
             factor = 0.005 if style == "direct" else 0.020
             status = await self.printer.query_objects(
                 {
@@ -211,7 +266,9 @@ class CalibrationManager:
         elif wizard == "input_shaper":
             axis = str(options.get("axis", "both")).lower()
             if axis not in {"x", "y", "both"}:
-                raise WizardError("Achse muss X, Y oder beide sein")
+                raise WizardError(
+                    "Achse muss X, Y oder beide sein", message_key="ui.the_axis_must_be_x_y_or_both"
+                )
             data = {"axis": axis}
         elif wizard == "flow":
             data = {}
@@ -237,7 +294,10 @@ class CalibrationManager:
     ) -> CalibrationSession:
         lock = self._locks.get(wizard)
         if lock is None:
-            raise WizardError("Für diese Kalibrierung ist keine Sitzung aktiv")
+            raise WizardError(
+                "Für diese Kalibrierung ist keine Sitzung aktiv",
+                message_key="ui.no_session_is_active_for_this_calibration",
+            )
         async with lock:
             session = self._session(wizard)
             try:
@@ -269,16 +329,24 @@ class CalibrationManager:
                 elif wizard == "input_shaper":
                     await self._input_shaper(session, action, confirmation_token)
                 else:
-                    raise WizardError("Unbekannte Kalibrierung oder Aktion")
+                    raise WizardError(
+                        "Unbekannte Kalibrierung oder Aktion",
+                        message_key="ui.unknown_calibration_or_action",
+                    )
             except (PrinterError, ConfigError) as exc:
                 session.state = "ERROR"
                 session.error = str(exc)
-                raise WizardError(str(exc)) from exc
+                session.error_key = exc.message_key
+                session.error_params = exc.message_params
+                raise WizardError(exc) from exc
         return session
 
     async def _cancel(self, session: CalibrationSession) -> None:
         if session.state in {"COMPLETE", "CANCELLED"}:
-            raise WizardError("Diese Kalibrierung ist bereits beendet")
+            raise WizardError(
+                "Diese Kalibrierung ist bereits beendet",
+                message_key="ui.this_calibration_has_already_ended",
+            )
         if session.wizard == "pressure_advance" and session.state in {
             "PRINT_TOWER",
             "CALCULATED",
@@ -288,7 +356,8 @@ class CalibrationManager:
             if snapshot.print_state in {"printing", "paused"}:
                 raise WizardError(
                     "Beende oder brich den Testdruck in Mainsail ab, bevor du die "
-                    "Pressure-Advance-Kalibrierung verlässt."
+                    "Pressure-Advance-Kalibrierung verlässt.",
+                    message_key="ui.finish_or_cancel_the_test_print_in_mainsail_before_leaving",
                 )
             await self._restore_pressure_advance_test(session)
         if session.wizard in {"probe_offset", "bed_screws"} and session.state == "ADJUSTING":
@@ -314,14 +383,20 @@ class CalibrationManager:
             self._require_state(session, "REVIEW")
             await self._save_config(session, token)
         else:
-            raise WizardError("Diese PID-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese PID-Aktion ist nicht erlaubt",
+                message_key="ui.this_pid_action_is_not_allowed",
+            )
 
     async def _bed_mesh(self, session: CalibrationSession, action: str, token: str | None) -> None:
         if action == "run":
             self._require_state(session, "HOMED")
             snapshot = await self._safe("bed_mesh", require_clean=True)
             if not all(axis in snapshot.homed_axes.lower() for axis in "xyz"):
-                raise WizardError("Vor dem Bed Mesh müssen alle Achsen referenziert werden")
+                raise WizardError(
+                    "Vor dem Bed Mesh müssen alle Achsen referenziert werden",
+                    message_key="ui.all_axes_must_be_homed_before_bed_mesh_calibration",
+                )
             session.state = "RUNNING"
             await self.printer.run_gcode("BED_MESH_CALIBRATE PROFILE=default", long_running=True)
             status = await self.printer.query_objects(
@@ -336,15 +411,24 @@ class CalibrationManager:
             self._require_state(session, "REVIEW")
             await self._save_config(session, token)
         else:
-            raise WizardError("Diese Bed-Mesh-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Bed-Mesh-Aktion ist nicht erlaubt",
+                message_key="ui.this_bed_mesh_action_is_not_allowed",
+            )
 
     async def _screws(self, session: CalibrationSession, action: str) -> None:
         if action != "calculate":
-            raise WizardError("Diese Schrauben-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Schrauben-Aktion ist nicht erlaubt",
+                message_key="ui.this_screw_action_is_not_allowed",
+            )
         self._require_state(session, "HOMED", "REVIEW")
         snapshot = await self._safe("screws_tilt")
         if not all(axis in snapshot.homed_axes.lower() for axis in "xyz"):
-            raise WizardError("Vor SCREWS_TILT_CALCULATE müssen alle Achsen referenziert werden")
+            raise WizardError(
+                "Vor SCREWS_TILT_CALCULATE müssen alle Achsen referenziert werden",
+                message_key="ui.all_axes_must_be_homed_before_screws_tilt_calculate",
+            )
         session.state = "RUNNING"
         await self.printer.run_gcode("SCREWS_TILT_CALCULATE", long_running=True)
         status = await self.printer.query_objects(
@@ -355,11 +439,17 @@ class CalibrationManager:
 
     async def _gantry(self, session: CalibrationSession, action: str) -> None:
         if action != "run":
-            raise WizardError("Diese Gantry-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Gantry-Aktion ist nicht erlaubt",
+                message_key="ui.this_gantry_action_is_not_allowed",
+            )
         self._require_state(session, "HOMED")
         snapshot = await self._safe(session.wizard)
         if not all(axis in snapshot.homed_axes.lower() for axis in "xyz"):
-            raise WizardError("Vor der Gantry-Kalibrierung müssen alle Achsen referenziert werden")
+            raise WizardError(
+                "Vor der Gantry-Kalibrierung müssen alle Achsen referenziert werden",
+                message_key="ui.all_axes_must_be_homed_before_gantry_calibration",
+            )
         command = "Z_TILT_ADJUST" if session.wizard == "z_tilt" else "QUAD_GANTRY_LEVEL"
         session.state = "RUNNING"
         await self.printer.run_gcode(command, long_running=True)
@@ -383,7 +473,10 @@ class CalibrationManager:
             await self.printer.run_gcode("ABORT")
             session.state = "CANCELLED"
         else:
-            raise WizardError("Diese Bed-Screws-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Bed-Screws-Aktion ist nicht erlaubt",
+                message_key="ui.this_bed_screws_action_is_not_allowed",
+            )
 
     async def _probe(
         self,
@@ -397,7 +490,10 @@ class CalibrationManager:
             self._require_state(session, "HOMED")
             snapshot = await self.printer.snapshot()
             if not all(axis in snapshot.homed_axes.lower() for axis in "xyz"):
-                raise WizardError("Vor PROBE_CALIBRATE müssen alle Achsen referenziert werden")
+                raise WizardError(
+                    "Vor PROBE_CALIBRATE müssen alle Achsen referenziert werden",
+                    message_key="ui.all_axes_must_be_homed_before_probe_calibrate",
+                )
             await self.printer.run_gcode("PROBE_CALIBRATE", long_running=True)
             session.state = "ADJUSTING"
         elif action == "testz":
@@ -405,7 +501,9 @@ class CalibrationManager:
             amount = self._number(values.get("amount"))
             allowed = {-1.0, -0.5, -0.1, -0.05, -0.01, 0.01, 0.05, 0.1, 0.5, 1.0}
             if amount not in allowed:
-                raise WizardError("Nicht erlaubte TESTZ-Schrittweite")
+                raise WizardError(
+                    "Nicht erlaubte TESTZ-Schrittweite", message_key="ui.invalid_testz_step_size"
+                )
             await self.printer.run_gcode(f"TESTZ Z={amount:g}")
         elif action == "accept":
             self._require_state(session, "ADJUSTING")
@@ -422,7 +520,10 @@ class CalibrationManager:
             self._require_state(session, "REVIEW")
             await self._save_config(session, token)
         else:
-            raise WizardError("Diese Probe-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Probe-Aktion ist nicht erlaubt",
+                message_key="ui.this_probe_action_is_not_allowed",
+            )
 
     async def _pressure_advance(
         self,
@@ -445,10 +546,16 @@ class CalibrationManager:
             self._require_state(session, "PRINT_TOWER")
             height = self._number(values.get("height"))
             if height < 0 or height > 100:
-                raise WizardError("Messhöhe muss zwischen 0 und 100 mm liegen")
+                raise WizardError(
+                    "Messhöhe muss zwischen 0 und 100 mm liegen",
+                    message_key="ui.the_measured_height_must_be_between_0_and_100_mm",
+                )
             value = session.data["start"] + height * session.data["factor"]
             if value < 0 or value > 2:
-                raise WizardError("Berechneter Pressure-Advance-Wert ist unplausibel")
+                raise WizardError(
+                    "Berechneter Pressure-Advance-Wert ist unplausibel",
+                    message_key="ui.the_calculated_pressure_advance_value_is_implausible",
+                )
             session.data.update({"height": height, "value": value})
             session.state = "CALCULATED"
         elif action == "apply":
@@ -464,7 +571,10 @@ class CalibrationManager:
             self._require_state(session, "APPLIED")
             self._check_token(session, token)
             if not self.config:
-                raise WizardError("Dauerhafte Konfigurationsänderungen sind deaktiviert")
+                raise WizardError(
+                    "Dauerhafte Konfigurationsänderungen sind deaktiviert",
+                    message_key="ui.permanent_configuration_writes_are_disabled",
+                )
             source, backup = self.config.upsert_numeric(
                 str(session.data["extruder"]),
                 "pressure_advance",
@@ -474,7 +584,10 @@ class CalibrationManager:
             session.save_token = None
             session.state = "COMPLETE"
         else:
-            raise WizardError("Diese Pressure-Advance-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Pressure-Advance-Aktion ist nicht erlaubt",
+                message_key="ui.this_pressure_advance_action_is_not_allowed",
+            )
 
     async def _restore_pressure_advance_test(self, session: CalibrationSession) -> None:
         original = self._number(session.data.get("original_pressure_advance", 0.0))
@@ -499,19 +612,31 @@ class CalibrationManager:
 
     def _flow(self, session: CalibrationSession, action: str, values: dict[str, Any]) -> None:
         if action != "calculate":
-            raise WizardError("Diese Flow-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Flow-Aktion ist nicht erlaubt",
+                message_key="ui.this_flow_action_is_not_allowed",
+            )
         self._require_state(session, "READY")
         expected = self._number(values.get("expected"))
         current = self._number(values.get("current", 100))
         measurements = [self._number(value) for value in values.get("measurements", [])]
         if len(measurements) != 4:
-            raise WizardError("Für die Flow-Berechnung sind genau vier Messwerte erforderlich")
+            raise WizardError(
+                "Für die Flow-Berechnung sind genau vier Messwerte erforderlich",
+                message_key="ui.exactly_four_measurements_are_required_to_calculate_flow",
+            )
         if expected <= 0 or any(item <= 0 for item in measurements):
-            raise WizardError("Sollmaß und Messwerte müssen größer als null sein")
+            raise WizardError(
+                "Sollmaß und Messwerte müssen größer als null sein",
+                message_key="ui.the_target_size_and_measurements_must_be_greater_than_zero",
+            )
         average = sum(measurements) / len(measurements)
         result = current * expected / average
         if result < 70 or result > 130:
-            raise WizardError("Das Ergebnis liegt außerhalb des sicheren Bereichs 70–130 %")
+            raise WizardError(
+                "Das Ergebnis liegt außerhalb des sicheren Bereichs 70–130 %",
+                message_key="ui.the_result_is_outside_the_safe_range_of_70_130",
+            )
         session.data.update({"average": average, "result": result})
         session.state = "COMPLETE"
 
@@ -528,7 +653,10 @@ class CalibrationManager:
             self._require_state(session, "HOMED")
             snapshot = await self._safe("input_shaper", require_clean=True)
             if not all(axis in snapshot.homed_axes.lower() for axis in "xy"):
-                raise WizardError("Vor der Resonanzmessung müssen X und Y referenziert werden")
+                raise WizardError(
+                    "Vor der Resonanzmessung müssen X und Y referenziert werden",
+                    message_key="ui.x_and_y_must_be_homed_before_resonance_measurement",
+                )
             axis = session.data["axis"]
             command = (
                 "SHAPER_CALIBRATE" if axis == "both" else f"SHAPER_CALIBRATE AXIS={axis.upper()}"
@@ -543,7 +671,10 @@ class CalibrationManager:
             self._require_state(session, "REVIEW")
             await self._save_config(session, token)
         else:
-            raise WizardError("Diese Input-Shaper-Aktion ist nicht erlaubt")
+            raise WizardError(
+                "Diese Input-Shaper-Aktion ist nicht erlaubt",
+                message_key="ui.this_input_shaper_action_is_not_allowed",
+            )
 
     async def _save_config(self, session: CalibrationSession, token: str | None) -> None:
         self._check_token(session, token)
@@ -559,14 +690,19 @@ class CalibrationManager:
             or not session.save_token
             or not secrets.compare_digest(token, session.save_token)
         ):
-            raise WizardError("Speicherbestätigung ist ungültig oder abgelaufen")
+            raise WizardError(
+                "Speicherbestätigung ist ungültig oder abgelaufen",
+                message_key="ui.save_confirmation_is_invalid_or_expired",
+            )
 
     @staticmethod
     def _require_state(session: CalibrationSession, *states: str) -> None:
         if session.state not in states:
             expected = ", ".join(states)
             raise WizardError(
-                f"Aktion ist in Zustand {session.state} nicht erlaubt; erwartet: {expected}"
+                f"Aktion ist in Zustand {session.state} nicht erlaubt; erwartet: {expected}",
+                message_key="ui.action_is_not_allowed_in_value_expected_value",
+                message_params={"state": session.state, "expected": expected},
             )
 
     @staticmethod
@@ -574,7 +710,11 @@ class CalibrationManager:
         try:
             result = float(value)
         except (TypeError, ValueError) as exc:
-            raise WizardError("Ungültiger Zahlenwert") from exc
+            raise WizardError(
+                "Ungültiger Zahlenwert", message_key="ui.invalid_numeric_value"
+            ) from exc
         if not math.isfinite(result):
-            raise WizardError("Zahlenwert muss endlich sein")
+            raise WizardError(
+                "Zahlenwert muss endlich sein", message_key="ui.the_numeric_value_must_be_finite"
+            )
         return result

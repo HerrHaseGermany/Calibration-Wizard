@@ -7,6 +7,7 @@ import secrets
 from typing import Any
 
 from .configuration import ConfigError, KlipperConfigRepository
+from .errors import Message
 from .printer import PrinterAdapter
 from .wizard import WizardError
 
@@ -89,9 +90,15 @@ class CalibrationSetupManager:
     async def preview(self, wizard: str, values: dict[str, Any]) -> dict[str, Any]:
         snapshot = await self.printer.snapshot()
         if not snapshot.connected or snapshot.state != "ready":
-            raise WizardError("Klipper muss für die Einrichtung bereit sein")
+            raise WizardError(
+                "Klipper muss für die Einrichtung bereit sein",
+                message_key="ui.klipper_must_be_ready_for_setup",
+            )
         if snapshot.print_state in {"printing", "paused"}:
-            raise WizardError("Die Konfiguration kann während eines Drucks nicht geändert werden")
+            raise WizardError(
+                "Die Konfiguration kann während eines Drucks nicht geändert werden",
+                message_key="ui.the_configuration_cannot_be_changed_during_a_print",
+            )
         normalized = self._normalize(wizard, values)
         token = secrets.token_urlsafe(24)
         digest = self._digest(normalized)
@@ -109,11 +116,17 @@ class CalibrationSetupManager:
         self, wizard: str, values: dict[str, Any], token: str, restart: bool
     ) -> dict[str, Any]:
         if not self.config:
-            raise WizardError("Dauerhafte Konfigurationsänderungen sind deaktiviert")
+            raise WizardError(
+                "Dauerhafte Konfigurationsänderungen sind deaktiviert",
+                message_key="ui.permanent_configuration_writes_are_disabled",
+            )
         normalized = self._normalize(wizard, values)
         preview = self._previews.get(wizard)
         if not preview or not secrets.compare_digest(token, preview[0]) or normalized != preview[1]:
-            raise WizardError("Die Einrichtungs-Vorschau ist ungültig oder wurde verändert")
+            raise WizardError(
+                "Die Einrichtungs-Vorschau ist ungültig oder wurde verändert",
+                message_key="ui.the_setup_preview_is_invalid_or_has_been_changed",
+            )
         try:
             source, backup = self.config.update_section_settings(
                 self._schema(wizard)["section"],
@@ -122,7 +135,7 @@ class CalibrationSetupManager:
                 (r"screw\d+(?:_name)?",) if self._schema(wizard)["kind"] == "named_points" else (),
             )
         except ConfigError as exc:
-            raise WizardError(str(exc)) from exc
+            raise WizardError(exc) from exc
         self._previews.pop(wizard, None)
         if restart:
             await self.printer.restart()
@@ -137,17 +150,29 @@ class CalibrationSetupManager:
     def _schema(wizard: str) -> dict[str, Any]:
         schema = SETUP_SCHEMAS.get(wizard)
         if not schema:
-            raise WizardError("Für diese Kalibrierung gibt es keinen Einrichtungsassistenten")
+            raise WizardError(
+                "Für diese Kalibrierung gibt es keinen Einrichtungsassistenten",
+                message_key="ui.no_setup_wizard_is_available_for_this_calibration",
+            )
         return schema
 
     def _normalize(self, wizard: str, values: dict[str, Any]) -> dict[str, str]:
         schema = self._schema(wizard)
         if schema["kind"] == "mesh":
-            minimum = self._point(values.get("mesh_min"), "Mesh-Minimum")
-            maximum = self._point(values.get("mesh_max"), "Mesh-Maximum")
+            minimum = self._point(
+                values.get("mesh_min"), Message("Mesh-Minimum", "ui.mesh_minimum")
+            )
+            maximum = self._point(
+                values.get("mesh_max"), Message("Mesh-Maximum", "ui.mesh_maximum")
+            )
             if minimum[0] >= maximum[0] or minimum[1] >= maximum[1]:
-                raise WizardError("Mesh-Maximum muss rechts oberhalb des Minimums liegen")
-            count = self._integer_point(values.get("probe_count"), "Probe-Anzahl", 2, 50)
+                raise WizardError(
+                    "Mesh-Maximum muss rechts oberhalb des Minimums liegen",
+                    message_key="ui.the_mesh_maximum_must_be_above_and_to_the_right",
+                )
+            count = self._integer_point(
+                values.get("probe_count"), Message("Probe-Anzahl", "setup.probe_count"), 2, 50
+            )
             result = {
                 "mesh_min": self._format_point(minimum),
                 "mesh_max": self._format_point(maximum),
@@ -162,7 +187,11 @@ class CalibrationSetupManager:
                 result[f"screw{index}"] = self._format_point(point[:2])
                 name = str(point[2] or f"Screw {index}")[:40]
                 if any(character in name for character in "[]#;\n\r"):
-                    raise WizardError(f"Name von Schraube {index} enthält ungültige Zeichen")
+                    raise WizardError(
+                        f"Name von Schraube {index} enthält ungültige Zeichen",
+                        message_key="ui.name_of_screw_value_contains_invalid_characters",
+                        message_params={"index": index},
+                    )
                 result[f"screw{index}_name"] = name
             if "screw_thread" in schema["fields"]:
                 thread = str(values.get("screw_thread", "CW-M4")).upper()
@@ -174,7 +203,9 @@ class CalibrationSetupManager:
                     "CCW-M4",
                     "CCW-M5",
                 }:
-                    raise WizardError("Ungültiges Schraubengewinde")
+                    raise WizardError(
+                        "Ungültiges Schraubengewinde", message_key="ui.invalid_screw_thread"
+                    )
                 result["screw_thread"] = thread
         elif schema["kind"] == "dual_points":
             positions = self._points(
@@ -210,12 +241,23 @@ class CalibrationSetupManager:
         self, value: Any, minimum: int, maximum: int, *, named: bool = False
     ) -> list[tuple[float, float] | tuple[float, float, str]]:
         if not isinstance(value, list) or not minimum <= len(value) <= maximum:
-            raise WizardError(f"Es werden {minimum} bis {maximum} Punkte benötigt")
+            raise WizardError(
+                f"Es werden {minimum} bis {maximum} Punkte benötigt",
+                message_key="ui.between_value_and_value_points_are_required",
+                message_params={"minimum": minimum, "maximum": maximum},
+            )
         result = []
         for index, item in enumerate(value, start=1):
             if not isinstance(item, dict):
-                raise WizardError(f"Punkt {index} ist ungültig")
-            point = self._point([item.get("x"), item.get("y")], f"Punkt {index}")
+                raise WizardError(
+                    f"Punkt {index} ist ungültig",
+                    message_key="ui.point_value_is_invalid",
+                    message_params={"index": index},
+                )
+            point = self._point(
+                [item.get("x"), item.get("y")],
+                Message(f"Punkt {index}", "setup.point", index=index),
+            )
             result.append((*point, str(item.get("name", ""))) if named else point)
         return result
 
@@ -223,19 +265,35 @@ class CalibrationSetupManager:
         if isinstance(value, str):
             value = value.split(",")
         if not isinstance(value, (list, tuple)) or len(value) != 2:
-            raise WizardError(f"{label} benötigt X und Y")
+            raise WizardError(
+                f"{label} benötigt X und Y",
+                message_key="ui.value_requires_x_and_y",
+                message_params={"label": label},
+            )
         return (
-            self._number(value[0], f"{label} X", -1000, 1000),
-            self._number(value[1], f"{label} Y", -1000, 1000),
+            self._number(
+                value[0], Message(f"{label} X", "setup.axis", label=label, axis="X"), -1000, 1000
+            ),
+            self._number(
+                value[1], Message(f"{label} Y", "setup.axis", label=label, axis="Y"), -1000, 1000
+            ),
         )
 
     def _integer_point(self, value: Any, label: str, minimum: int, maximum: int) -> tuple[int, int]:
         point = self._point(value, label)
         if any(not number.is_integer() for number in point):
-            raise WizardError(f"{label} muss ganzzahlig sein")
+            raise WizardError(
+                f"{label} muss ganzzahlig sein",
+                message_key="ui.value_must_be_an_integer",
+                message_params={"label": label},
+            )
         integers = int(point[0]), int(point[1])
         if any(number < minimum or number > maximum for number in integers):
-            raise WizardError(f"{label} muss zwischen {minimum} und {maximum} liegen")
+            raise WizardError(
+                f"{label} muss zwischen {minimum} und {maximum} liegen",
+                message_key="ui.value_must_be_between_value_and_value",
+                message_params={"label": label, "minimum": minimum, "maximum": maximum},
+            )
         return integers
 
     @staticmethod
@@ -243,9 +301,21 @@ class CalibrationSetupManager:
         try:
             number = float(value)
         except (TypeError, ValueError) as exc:
-            raise WizardError(f"{label} ist keine gültige Zahl") from exc
+            raise WizardError(
+                f"{label} ist keine gültige Zahl",
+                message_key="ui.value_is_not_a_valid_number",
+                message_params={"label": label},
+            ) from exc
         if not math.isfinite(number) or number < minimum or number > maximum:
-            raise WizardError(f"{label} muss zwischen {minimum:g} und {maximum:g} liegen")
+            raise WizardError(
+                f"{label} muss zwischen {minimum:g} und {maximum:g} liegen",
+                message_key="ui.value_must_be_between_value_and_value",
+                message_params={
+                    "label": label,
+                    "minimum": format(minimum, "g"),
+                    "maximum": format(maximum, "g"),
+                },
+            )
         return number
 
     @staticmethod

@@ -55,6 +55,8 @@ class CalibrationSession(BaseModel):
     state: str = "READY"
     data: dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    error_key: Optional[str] = None
+    error_params: dict[str, Any] = Field(default_factory=dict)
     save_token: Optional[str] = None
 
 
@@ -86,6 +88,7 @@ class CalibrationResult(BaseModel):
     old_rotation_distance: float
     new_rotation_distance: float
     warnings: list[str] = Field(default_factory=list)
+    warning_keys: list[str] = Field(default_factory=list)
     safe_to_apply: bool
 
 
@@ -100,6 +103,8 @@ class WizardSession(BaseModel):
     result: Optional[CalibrationResult] = None
     verification_result: Optional[CalibrationResult] = None
     error: Optional[str] = None
+    error_key: Optional[str] = None
+    error_params: dict[str, Any] = Field(default_factory=dict)
     save_token: Optional[str] = None
     config_source: Optional[str] = None
 

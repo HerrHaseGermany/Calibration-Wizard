@@ -1,81 +1,75 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
+import {loadLocales, t, msg, setLocale, setText, applyTranslations, apiError} from "../frontend/assets/i18n.js";
 
-// Load the browser module without adding a package dependency or changing module types.
-globalThis.localStorage = {getItem: () => "de", setItem: () => {}};
-globalThis.document = {documentElement: {}};
-globalThis.Node = {TEXT_NODE: 3, ELEMENT_NODE: 1};
-globalThis.NodeFilter = {SHOW_TEXT: 4};
-const source = await readFile(new URL("../frontend/assets/i18n.js", import.meta.url), "utf8");
-const {translate, localize, setLocale} = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
-
-test("extruder instructions, warnings and dynamic errors use German", () => {
-  setLocale("de");
-  assert.equal(translate("Step 4 · Motion"), "Schritt 4 · Bewegung");
-  assert.equal(translate("Heating…"), "Heizt…");
-  assert.equal(translate("Extrude 100 mm again"), "Extrudiere 100 mm erneut");
-  assert.equal(translate("Temperature must be between 170 and 300 °C"), "Die Temperatur muss zwischen 170 und 300 °C liegen");
-  assert.equal(translate("The calculated rotation_distance is not realistic."), "Die berechnete rotation_distance ist unrealistisch.");
-  assert.equal(translate("Updated /config/printer.cfg; backup: /backups/printer.cfg"), "Aktualisiert: /config/printer.cfg; Backup: /backups/printer.cfg");
+const catalogs = {};
+await loadLocales(async url => {
+  const language = url.pathname.split("/").pop().split(".")[0];
+  catalogs[language] = JSON.parse(await readFile(url, "utf8"));
+  return catalogs[language];
 });
 
-test("English covers manual screws, setup, inline fragments and validation", () => {
-  setLocale("en");
-  assert.equal(translate("Papierwiderstand angleichen"), "Match paper resistance");
-  assert.equal(translate("Probe-Messpunkte (4 Punkte)"), "Probe points (4 points)");
-  assert.equal(translate("Punkt 2 X ist keine gültige Zahl"), "Point 2 X is not a valid number");
-  assert.equal(translate("Zieltemperatur muss in 5-°C-Schritten zwischen 150 und 300 liegen"), "Target temperature must be in 5 °C increments between 150 and 300");
-  assert.equal(translate("mm. Übernimm den neuen Wert in dein Filamentprofil im Slicer und drucke zur Kontrolle erneut."), "mm. Apply the new value to your filament profile in the slicer and print again to verify it.");
-});
-
-test("helper category and filament process labels follow the selected language", () => {
-  setLocale("en");
-  assert.equal(translate("Helfer"), "Helper");
-  assert.equal(translate("Filament wechseln"), "Change filament");
-  assert.equal(translate("Bestätigen und starten"), "Confirm and start");
-  assert.equal(translate("Neues Material aufheizen"), "Heat for new material");
-  assert.equal(translate("Von"), "From");
-  assert.equal(translate("Zu"), "To");
-  assert.equal(translate("Filament zum Entladen"), "Filament to unload");
-  assert.equal(translate("Beenden und Hotend anlassen"), "Finish and keep hotend on");
-  setLocale("de");
-  assert.equal(translate("Helper"), "Helfer");
-  assert.equal(translate("Change filament"), "Filament wechseln");
-});
-
-test("translation never changes parts of words or Klipper identifiers", () => {
-  setLocale("de");
-  assert.equal(translate("Heater Heatmap rotation_distance SAVE_CONFIG"), "Heizer Heatmap rotation_distance SAVE_CONFIG");
-  setLocale("en");
-  assert.equal(translate("Schraubengewinde Vermessungsdaten"), "Screw thread Vermessungsdaten");
-});
-
-test("repeated switching preserves ambiguous originals and detects new text", () => {
-  const node = {nodeType: 3, nodeValue: "Vermessen", parentElement: {closest: () => null}};
-  setLocale("en"); localize(node);
-  assert.equal(node.nodeValue, "Measure");
-  for (let count = 0; count < 3; count++) {
-    setLocale("de"); localize(node); assert.equal(node.nodeValue, "Vermessen");
-    setLocale("en"); localize(node); assert.equal(node.nodeValue, "Measure");
+test("catalogs have identical stable keys and named parameters", () => {
+  assert.deepEqual(Object.keys(catalogs.de).sort(), Object.keys(catalogs.en).sort());
+  for (const key of Object.keys(catalogs.de)) {
+    assert.deepEqual([...String(catalogs.de[key]).matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort(), [...String(catalogs.en[key]).matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort(), key);
   }
-  node.nodeValue = "Schraube einstellen";
-  localize(node); assert.equal(node.nodeValue, "Adjust screw");
-  setLocale("de"); localize(node); assert.equal(node.nodeValue, "Schraube einstellen");
 });
 
-test("root accessibility attributes translate while code and user labels stay intact", () => {
-  const attributes = new Map([["title", "Drucker sofort anhalten"], ["aria-label", "NOT-AUS"]]);
-  const element = {nodeType: 1, querySelectorAll: () => [], closest: () => null,
-    hasAttribute: name => attributes.has(name), getAttribute: name => attributes.get(name),
-    setAttribute: (name, value) => attributes.set(name, value)};
-  document.createTreeWalker = () => ({nextNode: () => false});
-  setLocale("en"); localize(element);
-  assert.equal(attributes.get("title"), "Stop printer immediately");
-  assert.equal(attributes.get("aria-label"), "EMERGENCY STOP");
-  setLocale("de"); localize(element);
-  assert.equal(attributes.get("title"), "Drucker sofort anhalten");
-  const protectedNode = {nodeType: 3, nodeValue: "Speichern", parentElement: {closest: () => ({})}};
-  setLocale("en"); localize(protectedNode);
-  assert.equal(protectedNode.nodeValue, "Speichern");
+test("filament labels and dynamic text use explicit keys", () => {
+  setLocale("de");
+  assert.equal(t("filament.change"), "Filament wechseln");
+  assert.equal(t("ui.extrude_value_mm_again", {distance:100}), "Extrudiere 100 mm erneut");
+  setLocale("en");
+  assert.equal(t("filament.change"), "Change filament");
+  assert.equal(t("ui.extrude_value_mm_again", {distance:100}), "Extrude 100 mm again");
+  assert.equal(t("missing.key"), "missing.key");
+});
+
+test("markup preserves keys and safely stores interpolation parameters", () => {
+  const html = msg("ui.extrude_value_mm", {distance:'100" onmouseover="test'});
+  assert.match(html, /data-i18n="ui.extrude_value_mm"/);
+  assert.match(html, /data-i18n-params="[^\"]*&quot;/);
+});
+
+test("structured backend errors translate parameters and follow language changes", () => {
+  const error = apiError({message_key:"ui.value_is_not_a_valid_number", message_params:{label:{message_key:"setup.axis",message_params:{label:{message_key:"setup.point",message_params:{index:2}},axis:"X"}}},detail:"Diagnostic"});
+  setLocale("en");
+  assert.equal(error.message, "Point 2 X is not a valid number");
+  setLocale("de");
+  assert.equal(error.message, "Punkt 2 X ist keine gültige Zahl");
+  assert.equal(apiError({detail:[{type:"validation"}]}).message,"Bitte prüfe die Eingabewerte.");
+});
+
+test("keyed slots and text bindings switch in place without modifying inputs", () => {
+  const input = {value:"243"};
+  const slot = {dataset:{i18n:"filament.load"},parentElement:{closest:()=>null},querySelectorAll:()=>[]};
+  const status = {isConnected:true,textContent:""};
+  const root = {querySelectorAll:selector=>selector==="[data-i18n]"?[slot]:[],contains:()=>true};
+  setLocale("de"); setText(status,()=>t("filament.change")); applyTranslations(root);
+  assert.equal(slot.innerHTML,"Filament laden");
+  setLocale("en"); applyTranslations(root);
+  assert.equal(slot.innerHTML,"Load filament");
+  assert.equal(status.textContent,"Change filament");
+  assert.equal(input.value,"243");
+});
+
+test("frontend no longer uses phrase matching or a translation observer", async () => {
+  const runtime = await readFile(new URL("../frontend/assets/i18n.js",import.meta.url),"utf8");
+  const app = await readFile(new URL("../frontend/assets/app.js",import.meta.url),"utf8");
+  assert.doesNotMatch(runtime,/replacePhrases|const pairs|const templates|export function translate\(/);
+  assert.doesNotMatch(app,/MutationObserver|localize\(/);
+});
+
+test("frontend key references exist in the catalogs", async () => {
+  for (const name of ["app.js", "positions.mjs"]) {
+    const source = await readFile(new URL(`../frontend/assets/${name}`,import.meta.url),"utf8");
+    const keys = [...source.matchAll(/\b(?:t|msg|LocalizedError)\(["']([^"']+)["']/g)].map(match=>match[1]);
+    for (const key of keys) assert.ok(Object.hasOwn(catalogs.de,key), key);
+  }
+  const html = await readFile(new URL("../frontend/index.html",import.meta.url),"utf8");
+  for (const match of html.matchAll(/data-i18n(?:-aria-label|-title|-placeholder)?="([^"]+)"/g)) {
+    assert.ok(Object.hasOwn(catalogs.de,match[1]),match[1]);
+  }
 });

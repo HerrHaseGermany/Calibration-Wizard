@@ -10,8 +10,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .errors import LocalizedErrorMixin
 
-class ConfigError(RuntimeError):
+
+class ConfigError(LocalizedErrorMixin, RuntimeError):
     pass
 
 
@@ -42,7 +44,9 @@ class KlipperConfigRepository:
             resolved.relative_to(self.config_root)
         except ValueError as exc:
             raise ConfigError(
-                f"Setting source is outside the writable config root: {resolved}"
+                f"Setting source is outside the writable config root: {resolved}",
+                message_key="errors.setting_source_is_outside_the_writable_config_root_resolved",
+                message_params={"resolved": resolved},
             ) from exc
         return resolved
 
@@ -54,7 +58,11 @@ class KlipperConfigRepository:
         if path in seen:
             return []
         if not path.is_file():
-            raise ConfigError(f"Configuration file does not exist: {path}")
+            raise ConfigError(
+                f"Configuration file does not exist: {path}",
+                message_key="ui.configuration_file_does_not_exist_value",
+                message_params={"path": path},
+            )
         seen.add(path)
         files = [path]
         for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -70,7 +78,11 @@ class KlipperConfigRepository:
             )
             matches = [Path(item) for item in sorted(glob.glob(str(candidate_pattern)))]
             if not matches:
-                raise ConfigError(f"Include pattern matched no files: {pattern}")
+                raise ConfigError(
+                    f"Include pattern matched no files: {pattern}",
+                    message_key="ui.include_pattern_matched_no_files_value",
+                    message_params={"pattern": pattern},
+                )
             for match in matches:
                 files.extend(self._walk(match, seen))
         return files
@@ -130,10 +142,18 @@ class KlipperConfigRepository:
                             )
                         )
         if not matches:
-            raise ConfigError(f"[{section}] {key} was not found in the loaded config tree")
+            raise ConfigError(
+                f"[{section}] {key} was not found in the loaded config tree",
+                message_key="ui.value_value_was_not_found_in_the_loaded_config_tree",
+                message_params={"section": section, "key": key},
+            )
         if len(matches) != 1:
             locations = ", ".join(f"{m.source}:{m.line_number}" for m in matches)
-            raise ConfigError(f"Setting is ambiguous; found at {locations}")
+            raise ConfigError(
+                f"Setting is ambiguous; found at {locations}",
+                message_key="ui.setting_is_ambiguous_found_at_value",
+                message_params={"locations": locations},
+            )
         return matches[0]
 
     def update_rotation_distance(
@@ -144,10 +164,14 @@ class KlipperConfigRepository:
         try:
             actual_old = float(setting.value)
         except ValueError as exc:
-            raise ConfigError("Existing rotation_distance is not a plain number") from exc
+            raise ConfigError(
+                "Existing rotation_distance is not a plain number",
+                message_key="ui.existing_rotation_distance_is_not_a_plain_number",
+            ) from exc
         if abs(actual_old - expected_old) > max(1e-7, abs(expected_old) * 1e-6):
             raise ConfigError(
-                "Configuration changed since calibration; refusing to overwrite the current value"
+                "Configuration changed since calibration; refusing to overwrite the current value",
+                message_key="ui.configuration_changed_since_calibration_refusing_to_overwrite_the_current_value",
             )
 
         source = setting.source
@@ -156,7 +180,10 @@ class KlipperConfigRepository:
         line = lines[setting.line_number - 1]
         match = re.match(r"^(\s*rotation_distance\s*[:=]\s*)([^#;\r\n]+)(.*)$", line, re.IGNORECASE)
         if not match:
-            raise ConfigError("Could not safely rewrite the rotation_distance line")
+            raise ConfigError(
+                "Could not safely rewrite the rotation_distance line",
+                message_key="ui.could_not_safely_rewrite_the_rotation_distance_line",
+            )
         newline = "\n" if line.endswith("\n") else ""
         value_field = match.group(2)
         spacing = value_field[len(value_field.rstrip()) :]
@@ -185,7 +212,7 @@ class KlipperConfigRepository:
     def upsert_numeric(self, section: str, key: str, new_value: float) -> tuple[Path, Path]:
         """Update or insert a numeric value in one unambiguous writable section."""
         if not isinstance(new_value, (int, float)) or not float("-inf") < new_value < float("inf"):
-            raise ConfigError("New value must be finite")
+            raise ConfigError("New value must be finite", message_key="ui.new_value_must_be_finite")
         try:
             setting = self.find(section, key)
         except ConfigError as exc:
@@ -200,7 +227,11 @@ class KlipperConfigRepository:
                     if match and match.group(1).strip().casefold() == section.casefold():
                         section_matches.append((path, number))
             if len(section_matches) != 1:
-                raise ConfigError(f"Section [{section}] is missing or ambiguous") from exc
+                raise ConfigError(
+                    f"Section [{section}] is missing or ambiguous",
+                    message_key="ui.section_value_is_missing_or_ambiguous",
+                    message_params={"section": section},
+                ) from exc
             source, section_line = section_matches[0]
             source = self._require_writable_path(source)
             original = source.read_text(encoding="utf-8")
@@ -220,7 +251,11 @@ class KlipperConfigRepository:
                 rf"^(\s*{re.escape(key)}\s*[:=]\s*)([^#;\r\n]+)(.*)$", line, re.IGNORECASE
             )
             if not match:
-                raise ConfigError(f"Could not safely rewrite {key}")
+                raise ConfigError(
+                    f"Could not safely rewrite {key}",
+                    message_key="ui.could_not_safely_rewrite_value",
+                    message_params={"key": key},
+                )
             newline = "\n" if line.endswith("\n") else ""
             spacing = match.group(2)[len(match.group(2).rstrip()) :]
             tail = match.group(3).rstrip("\r\n")
@@ -256,20 +291,36 @@ class KlipperConfigRepository:
         """Update whitelisted settings while retaining unrelated section content."""
         if expected_fingerprint and self.fingerprint() != expected_fingerprint:
             raise ConfigError(
-                "Configuration changed since preview; refusing to overwrite newer values"
+                "Configuration changed since preview; refusing to overwrite newer values",
+                message_key="ui.configuration_changed_since_preview_refusing_to_overwrite_newer_values",
             )
         if not settings:
-            raise ConfigError("No section settings were supplied")
+            raise ConfigError(
+                "No section settings were supplied",
+                message_key="ui.no_section_settings_were_supplied",
+            )
         for key, value in settings.items():
             if not re.fullmatch(r"[a-zA-Z0-9_]+", key):
-                raise ConfigError(f"Invalid setting name: {key}")
+                raise ConfigError(
+                    f"Invalid setting name: {key}",
+                    message_key="ui.invalid_setting_name_value",
+                    message_params={"key": key},
+                )
             if any(character in value for character in "[]#;\x00"):
-                raise ConfigError(f"Unsafe characters in [{section}] {key}")
+                raise ConfigError(
+                    f"Unsafe characters in [{section}] {key}",
+                    message_key="ui.unsafe_characters_in_value_value",
+                    message_params={"section": section, "key": key},
+                )
 
         locations = self._section_locations(section)
         if len(locations) > 1:
             found = ", ".join(str(path) for path, _start, _end in locations)
-            raise ConfigError(f"Section [{section}] is ambiguous; found in {found}")
+            raise ConfigError(
+                f"Section [{section}] is ambiguous; found in {found}",
+                message_key="errors.section_section_is_ambiguous_found_in_found",
+                message_params={"section": section, "found": found},
+            )
         if locations:
             source, start, end = locations[0]
             source = self._require_writable_path(source)
