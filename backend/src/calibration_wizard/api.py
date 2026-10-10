@@ -140,8 +140,8 @@ def create_app(
         snapshot = await printer.snapshot()
         if not snapshot.connected or snapshot.state != "ready":
             raise WizardError("Klipper muss für den Filamentwechsel bereit sein.")
-        if snapshot.print_state in {"printing", "paused"}:
-            raise WizardError("Filamentwechsel ist während eines Drucks oder einer Pause gesperrt.")
+        if snapshot.print_state == "printing":
+            raise WizardError("Filamentwechsel ist während eines laufenden Drucks gesperrt.")
         terminal = {"COMPLETE", "CANCELLED", "ERROR"}
         sessions = [wizard.session, *calibrations.sessions.values()]
         if any(item and item.state not in terminal for item in sessions):

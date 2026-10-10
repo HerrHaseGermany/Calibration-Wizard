@@ -49,7 +49,7 @@ const pairs = [
   ["Warte, bis die Zieltemperatur erreicht ist. Starte dann Laden oder Entladen.", "Wait until the target temperature is reached, then start loading or unloading."],
   ["Filament geladen.", "Filament loaded."], ["Filament entladen.", "Filament unloaded."],
   ["Klipper muss für den Filamentwechsel bereit sein.", "Klipper must be ready for a filament change."],
-  ["Filamentwechsel ist während eines Drucks oder einer Pause gesperrt.", "Filament changes are blocked while printing or paused."],
+  ["Filamentwechsel ist während eines laufenden Drucks gesperrt.", "Filament changes are blocked while printing."],
   ["Beende zuerst die laufende Kalibrierung.", "Finish the active calibration first."],
   ["Filamentbewegung läuft bereits.", "A filament move is already running."],
   ["Zieltemperatur liegt unter der Mindest-Extrusionstemperatur.", "Target temperature is below the minimum extrusion temperature."],

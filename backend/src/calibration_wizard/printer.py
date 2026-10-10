@@ -193,7 +193,7 @@ class MoonrakerPrinter(PrinterAdapter):
         snapshot = await self.snapshot()
         if not snapshot.connected or snapshot.state != "ready" or not snapshot.can_extrude:
             raise PrinterError("Klipper is not ready for a safe extrusion")
-        if snapshot.print_state in {"printing", "paused"} or snapshot.extruder != extruder:
+        if snapshot.print_state == "printing" or snapshot.extruder != extruder:
             raise PrinterError("Active extruder changed or printer is busy")
         if not math.isfinite(distance) or not math.isfinite(speed) or speed <= 0:
             raise PrinterError("Invalid extrusion distance or speed")

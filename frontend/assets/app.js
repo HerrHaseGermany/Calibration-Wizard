@@ -1,4 +1,4 @@
-import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261010-6";
+import { getLocale, localize, setLocale, t } from "./i18n.js?v=20261010-7";
 import { adjustment, positionMap } from "./positions.mjs?v=20261006-2";
 
 const base = new URL("./api/", window.location.href);
@@ -43,7 +43,7 @@ function printerIsReady() {
 }
 
 function printerReadinessKey(value = printer) {
-  return `${Boolean(value?.connected)}|${value?.state || "unknown"}|${value?.state_message || ""}`;
+  return `${Boolean(value?.connected)}|${value?.state || "unknown"}|${value?.state_message || ""}|${value?.print_state || "standby"}`;
 }
 
 function printerReadinessNotice() {
@@ -138,10 +138,13 @@ function dashboard() {
   statusStrip.classList.add("hidden");
   clearError();
   const ready = printerIsReady();
+  const printBusy = ["printing", "paused"].includes(printer?.print_state);
+  const calibrationsReady = ready && !printBusy;
+  const filamentReady = ready && printer?.print_state !== "printing";
   const card = (wizard) => {
-    const usable = ready || wizard.id === "flow";
+    const usable = !printBusy && (ready || wizard.id === "flow");
     const configured = wizard.configuration?.point_count ? `<span class="configured">${wizard.configuration.point_count} Punkte erkannt</span>` : "";
-    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${ready ? "" : "disabled"}>Einrichten</button>` : "";
+    const setup = wizard.setup_available ? `<button class="card-setup" type="button" data-setup="${wizard.id}" ${calibrationsReady ? "" : "disabled"}>Einrichten</button>` : "";
     if (wizard.available) {
       const interaction = usable ? `data-wizard="${wizard.id}" role="button" tabindex="0"` : "";
       return `<div class="calibration-card ${usable ? "" : "printer-blocked"}" ${interaction}>
@@ -168,13 +171,12 @@ function dashboard() {
   panel.innerHTML = `<h1>Tools</h1>
     ${printerReadinessNotice()}
     <div class="tool-groups">
-      <section class="tool-group" aria-labelledby="helper-title">
-        <h2 id="helper-title">Helfer</h2>
+      <section class="tool-group">
         <div class="calibration-grid">
-          <div class="calibration-card">
+          <div class="calibration-card ${filamentReady ? "" : "printer-blocked"}">
             <span class="card-icon">↕</span><h3>Filament laden / entladen</h3>
             <p>Hotend aufheizen und Filament kontrolliert laden oder entladen.</p>
-            <div class="card-buttons"><button id="open-filament" class="card-start" type="button" ${ready ? "" : "disabled"}>Öffnen →</button></div>
+            <div class="card-buttons"><button id="open-filament" class="card-start" type="button" ${filamentReady ? "" : "disabled"}>Öffnen →</button></div>
           </div>
         </div>
       </section>
@@ -281,7 +283,7 @@ function filamentPage() {
         if (!response.ok) throw new Error("Druckerstatus konnte nicht geladen werden.");
         const current = await response.json();
         if (disposed || !["heating", "ready"].includes(stage)) return;
-        const usable = current.connected && current.state === "ready" && !["printing", "paused"].includes(current.print_state);
+        const usable = current.connected && current.state === "ready" && current.print_state !== "printing";
         const reached = usable && current.can_extrude && current.temperature >= current.min_extrude_temp && current.temperature >= temperature - 2 && Math.abs(current.target - temperature) < 0.1;
         stage = reached ? "ready" : "heating";
         confirm.disabled = !reached;

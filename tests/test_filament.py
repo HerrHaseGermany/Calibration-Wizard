@@ -15,8 +15,10 @@ def filament_client():
     return client, printer
 
 
-def test_load_unload_and_heater_off(filament_client):
+@pytest.mark.parametrize("state", ["standby", "paused"])
+def test_load_unload_and_heater_off(filament_client, state):
     client, printer = filament_client
+    printer.data.print_state = state
     for direction in ("load", "unload"):
         response = client.post(
             "/api/tools/filament/heat", json={"temperature": 210, "direction": direction}
@@ -40,10 +42,9 @@ def test_load_unload_and_heater_off(filament_client):
     assert printer.data.target == 0
 
 
-@pytest.mark.parametrize("state", ["printing", "paused"])
-def test_filament_is_blocked_during_prints(filament_client, state):
+def test_filament_is_blocked_during_prints(filament_client):
     client, printer = filament_client
-    printer.data.print_state = state
+    printer.data.print_state = "printing"
     for action, values in [
         ("heat", {"temperature": 200}),
         ("load", {"confirmation_token": "invalid"}),
@@ -102,10 +103,12 @@ def test_cross_origin_is_rejected(filament_client):
 
 
 @pytest.mark.asyncio
-async def test_unload_sends_negative_chunks_and_restores_state():
+@pytest.mark.parametrize("state", ["standby", "paused"])
+async def test_unload_sends_negative_chunks_and_restores_state(state):
     printer = MoonrakerPrinter("http://moonraker")
     mock = MockPrinter()
     mock.data.temperature = 200
+    mock.data.print_state = state
     mock.data.max_extrude_only_distance = 30
     printer.snapshot = mock.snapshot
     scripts = []
