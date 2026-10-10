@@ -35,6 +35,9 @@ test("helper category and filament process labels follow the selected language",
   assert.equal(translate("Filament wechseln"), "Change filament");
   assert.equal(translate("Bestätigen und starten"), "Confirm and start");
   assert.equal(translate("Neues Material aufheizen"), "Heat for new material");
+  assert.equal(translate("Von"), "From");
+  assert.equal(translate("Zu"), "To");
+  assert.equal(translate("Filament zum Entladen"), "Filament to unload");
   setLocale("de");
   assert.equal(translate("Helper"), "Helfer");
   assert.equal(translate("Change filament"), "Filament wechseln");

@@ -149,6 +149,14 @@ def test_target_temperature_direction_and_extruder_are_checked(filament_client):
 
 def test_filament_change_allows_a_different_material(filament_client):
     client, printer = filament_client
+    speeds = []
+    extrude = printer.extrude
+
+    async def record_speed(extruder, distance, speed):
+        speeds.append(speed)
+        await extrude(extruder, distance, speed)
+
+    printer.extrude = record_speed
     for direction, temperature in [("unload", 240), ("load", 210)]:
         result = client.post(
             "/api/tools/filament/heat", json={"direction": direction, "temperature": temperature}
@@ -160,6 +168,7 @@ def test_filament_change_allows_a_different_material(filament_client):
         )
         assert response.status_code == 200
     assert printer.extrusions == [5, -100, 100, -2]
+    assert speeds == [5, 5, 5, 5]
     assert printer.data.target == 210
 
 

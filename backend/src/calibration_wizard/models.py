@@ -120,7 +120,7 @@ class FilamentHeatRequest(BaseModel):
 
 class FilamentMoveRequest(BaseModel):
     confirmation_token: str
-    speed: float = Field(default=2, gt=0, le=5, allow_inf_nan=False)
+    speed: float = Field(default=5, gt=0, le=5, allow_inf_nan=False)
 
 
 class MeasurementRequest(BaseModel):

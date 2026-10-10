@@ -12,6 +12,10 @@ export const messages = {
 };
 
 const pairs = [
+  ["Von", "From"], ["Zu", "To"],
+  ["Filament zum Laden", "Filament to load"],
+  ["Filament zum Entladen", "Filament to unload"],
+  ["Setze das neue Filament ein und bestätige die neue Temperatur.", "Insert the new filament and confirm the new temperature."],
   ["Helfer", "Helper"],
   ["Filament wechseln", "Change filament"],
   ["Wähle das aktuell eingesetzte Material. Der Assistent heizt auf und wartet vor jeder Bewegung auf deine Bestätigung.", "Choose the currently loaded material. The assistant heats the hotend and waits for your confirmation before each movement."],
