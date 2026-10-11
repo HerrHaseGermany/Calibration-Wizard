@@ -53,6 +53,7 @@ button, input, select { font: inherit; }
 .brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 24%, transparent)); }
 .brand strong, .brand small { display: block; line-height: 1.05; }
 .brand small { color: var(--muted); letter-spacing: .08em; text-transform: uppercase; font-size: 10px; margin-top: 4px; }
+.app-version { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .connection { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .top-actions { display: flex; align-items: center; gap: 18px; }
 .header-button { display:flex; align-items:center; gap:7px; height:36px; border:1px solid var(--border); background:var(--surface-2); color:var(--text); border-radius:9px; padding:0 11px; cursor:pointer; font-weight:750; font-size:12px; text-decoration:none; }
@@ -70,6 +71,7 @@ button, input, select { font: inherit; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 .connection i { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 12px currentColor; }
 .connection.online i { background: var(--good); }
+.connection.busy i { background: var(--warning); }
 .connection.offline i { background: var(--danger); }
 main { display: grid; grid-template-columns: 270px minmax(0, 850px); gap: clamp(24px, 5vw, 72px); max-width: 1250px; margin: 0 auto; padding: 54px 28px; }
 .rail { border-right: 1px solid var(--border); padding-right: 38px; }

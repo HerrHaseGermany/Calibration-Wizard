@@ -1,3 +1,5 @@
 """Klipper Calibration Wizard backend."""
 
-__version__ = "0.1.3"
+from .version import __version__
+
+__all__ = ["__version__"]

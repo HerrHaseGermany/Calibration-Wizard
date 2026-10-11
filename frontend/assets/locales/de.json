@@ -41,6 +41,7 @@
   "printer.state.shutdown": "Shutdown",
   "printer.state.startup": "Startet",
   "printer.state.unknown": "Unbekannt",
+  "printer.status.printing": "Druck läuft…",
   "setup.axis": "{label} {axis}",
   "setup.gantry_corners": "Gantry-Ecken (2 Punkte)",
   "setup.point": "Punkt {index}",

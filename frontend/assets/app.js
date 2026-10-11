@@ -928,6 +928,30 @@ async function restoreCalibration() {
   return true;
 }
 
+function updateConnectionStatus() {
+  let tone = "offline";
+  let key = "ui.printer_offline";
+  if (printer?.connected) {
+    if (printer.state === "ready") {
+      if (printer.print_state === "printing") {
+        tone = "busy";
+        key = "printer.status.printing";
+      } else if (printer.print_state === "paused") {
+        tone = "busy";
+        key = "printer.print.paused";
+      } else {
+        tone = "online";
+        key = "printer.state.ready";
+      }
+    } else {
+      tone = printer.state === "startup" ? "busy" : "offline";
+      key = ["startup", "shutdown", "error"].includes(printer.state) ? `printer.state.${printer.state}` : "printer.state.unknown";
+    }
+  }
+  connection.className = `connection ${tone}`;
+  setText(document.querySelector("#connection"), () => t(key));
+}
+
 function updateStatus(data) {
   const previousReadiness = printerReadinessKey();
   const previousSessionState = session?.state;
@@ -936,8 +960,7 @@ function updateStatus(data) {
   if (activeWizard === "extruder" && data.session) session = data.session;
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
   updateCalibrationStatusStrip();
-  connection.className = `connection ${printer.connected ? "online" : "offline"}`;
-  setText(document.querySelector("#connection"), () => printer.connected ? t("ui.printer_connected") : t("ui.printer_offline"));
+  updateConnectionStatus();
   if (!bootstrapping && pendingResolution() && continueAfterPendingResolution()) return;
   if (!bootstrapping && previousReadiness !== printerReadinessKey()) {
     if (isOverview) dashboard();
@@ -968,6 +991,11 @@ Promise.all([
   fetch(new URL("status", base)).then((r) => r.json()),
   fetch(new URL("wizards", base)).then((r) => r.json()),
 ]).then(async ([status, availableWizards]) => {
+  const versionLabel = document.querySelector("#app-version");
+  if (status.version) {
+    versionLabel.textContent = `v${status.version}`;
+    versionLabel.hidden = false;
+  }
   wizards = availableWizards;
   updateStatus(status);
   const pending = pendingResolution();
