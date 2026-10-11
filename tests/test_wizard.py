@@ -15,6 +15,7 @@ def test_wizards_follow_calibration_dependency_order():
         "quad_gantry_level",
         "probe_offset",
         "bed_mesh",
+        "xyz",
         "flow",
         "input_shaper",
         "pressure_advance",

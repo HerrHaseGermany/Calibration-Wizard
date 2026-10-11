@@ -9,8 +9,10 @@ from .configuration import ConfigError, KlipperConfigRepository
 from .models import CalibrationSession, PrinterCapabilities, PrinterSnapshot
 from .printer import PrinterAdapter, PrinterError
 from .wizard import WizardError
+from .xyz import XyzTravelCheck
 
 CAPABILITY_REQUIREMENTS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "xyz": (("G28", "SAVE_GCODE_STATE", "RESTORE_GCODE_STATE"), ()),
     "pid": (("PID_CALIBRATE",), ()),
     "bed_mesh": (("BED_MESH_CALIBRATE",), ("bed_mesh",)),
     "screws_tilt": (("SCREWS_TILT_CALCULATE",), ("screws_tilt_adjust",)),
@@ -99,6 +101,13 @@ class CalibrationManager:
             }
             if definition.id == "pid":
                 data["configuration"]["heaters"] = caps.heaters
+            if definition.id == "xyz" and available and settings.get("printer", {}).get(
+                "kinematics"
+            ) not in {"cartesian", "corexy", "corexz"}:
+                data.update(
+                    available=False, availability_key="xyz.errors.kinematics",
+                    availability_params={}, availability_reason="Unsupported XYZ kinematics",
+                )
             result.append(data)
         return result
 
@@ -206,6 +215,10 @@ class CalibrationManager:
             return await self._start(wizard, options)
 
     async def _start(self, wizard: str, options: dict[str, Any]) -> CalibrationSession:
+        active = [item for item in self.sessions.values()
+                  if item.state not in {"COMPLETE", "CANCELLED", "ERROR"}]
+        if (wizard == "xyz" and active) or any(item.wizard == "xyz" for item in active):
+            raise WizardError("Active calibration", message_key="xyz.errors.active")
         if wizard not in CAPABILITY_REQUIREMENTS:
             raise WizardError("Unbekannte Kalibrierung", message_key="ui.unknown_calibration")
         if wizard == "flow":
@@ -216,7 +229,15 @@ class CalibrationManager:
                 require_clean=wizard in {"pid", "bed_mesh", "probe_offset", "input_shaper"},
             )
         data: dict[str, Any] = dict(options)
-        if wizard == "pid":
+        if wizard == "xyz":
+            status = await self.printer.query_objects({"configfile": ["settings"]})
+            kinematics = status.get("configfile", {}).get("settings", {}).get("printer", {}).get(
+                "kinematics"
+            )
+            if kinematics not in {"cartesian", "corexy", "corexz"}:
+                raise WizardError("Unsupported kinematics", message_key="xyz.errors.kinematics")
+            data = {"samples": [], "results": []}
+        elif wizard == "pid":
             caps = await self.printer.capabilities()
             heater = str(options.get("heater", "extruder"))
             if heater not in caps.heaters:
@@ -313,6 +334,11 @@ class CalibrationManager:
                     session.state = "HOMED"
                 elif wizard == "pid":
                     await self._pid(session, action, confirmation_token)
+                elif wizard == "xyz":
+                    snapshot = await self._safe(wizard)
+                    if not all(axis in snapshot.homed_axes.lower() for axis in "xyz"):
+                        raise WizardError("Home all axes first", message_key="xyz.errors.homing")
+                    await XyzTravelCheck(self.printer).action(session, action, values)
                 elif wizard == "bed_mesh":
                     await self._bed_mesh(session, action, confirmation_token)
                 elif wizard == "screws_tilt":

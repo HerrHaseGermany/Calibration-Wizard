@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -253,8 +254,12 @@ class MockPrinter(PrinterAdapter):
         self.heating_rate = 80.0
         self.extrusions: list[float] = []
         self.gcodes: list[str] = []
+        self.position = [20.0, 20.0, 10.0, 0.0]
         self.capability_data = PrinterCapabilities(
             commands=[
+                "G28",
+                "SAVE_GCODE_STATE",
+                "RESTORE_GCODE_STATE",
                 "PID_CALIBRATE",
                 "BED_MESH_CALIBRATE",
                 "SCREWS_TILT_CALCULATE",
@@ -333,6 +338,9 @@ class MockPrinter(PrinterAdapter):
 
     async def run_gcode(self, script: str, *, long_running: bool = False) -> None:
         self.gcodes.append(script)
+        if "SAVE_GCODE_STATE NAME=kcw_xyz" in script:
+            for axis, distance in re.findall(r"G1 ([XYZ])([-\d.]+)", script):
+                self.position["XYZ".index(axis)] += float(distance)
         if script == "G28":
             self.data.homed_axes = "xyz"
         if script == "SAVE_CONFIG":
@@ -346,9 +354,16 @@ class MockPrinter(PrinterAdapter):
         if "screws_tilt_adjust" in objects:
             result["screws_tilt_adjust"] = {"error": False, "max_deviation": 0.02, "results": {}}
         if "toolhead" in objects:
-            result["toolhead"] = {"max_accel": 3000.0, "square_corner_velocity": 5.0}
+            result["toolhead"] = {
+                "max_accel": 3000.0, "square_corner_velocity": 5.0,
+                "position": self.position.copy(), "axis_minimum": [0, 0, 0, 0],
+                "axis_maximum": [220, 220, 250, 0],
+            }
         if "configfile" in objects:
-            result["configfile"] = {"settings": {"extruder": {"pressure_advance": 0.0}}}
+            result["configfile"] = {"settings": {
+                "extruder": {"pressure_advance": 0.0},
+                "printer": {"kinematics": "cartesian"},
+            }}
         return result
 
     async def capabilities(self) -> PrinterCapabilities:

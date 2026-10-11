@@ -1,4 +1,5 @@
 import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261011-1";
+import { renderXyzPage } from "./wizards/xyz/frontend.mjs?v=20261011-1";
 import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261010-9";
 import { adjustment, positionMap } from "./positions.mjs?v=20261010-9";
 
@@ -151,7 +152,7 @@ function dashboard() {
   };
   const phases = [
     {title:msg("overview.phase_temperature"), ids:["pid","extruder"]},
-    {title:msg("overview.phase_mechanics"), ids:["bed_screws","screws_tilt","z_tilt","quad_gantry_level","probe_offset","bed_mesh"]},
+    {title:msg("overview.phase_mechanics"), ids:["bed_screws","screws_tilt","z_tilt","quad_gantry_level","probe_offset","bed_mesh","xyz"]},
     {title:msg("overview.phase_quality"), ids:["flow","input_shaper","pressure_advance"]},
   ];
   const cards = phases.map(phase=>{
@@ -236,6 +237,7 @@ function updateNavigationAvailability() {
 
 function setNavigationLocked(locked) {
   navigationLocked = locked;
+  document.querySelector("#cancel").disabled = locked;
   homeButton.disabled = locked || isOverview;
   updateNavigationAvailability();
 }
@@ -273,6 +275,7 @@ emergencyButton.addEventListener("click", async () => {
 });
 
 function cardIcon(id) {
+  if (id === "xyz") return "XYZ";
   return ({filament:"↕", extruder:"E", pid:"°", flow:"%", pressure_advance:"PA", probe_offset:"Z", screws_tilt:"↻", bed_screws:"⌁", z_tilt:"Z²", quad_gantry_level:"Q", bed_mesh:"▦", input_shaper:"≈"})[id] || "+";
 }
 
@@ -418,6 +421,7 @@ function welcome() {
 }
 
 const genericSteps = {
+  xyz: ["ui.home_axes", "ui.prepare", "ui.measure_2", "ui.result"],
   pid: ["ui.prepare", "ui.pid_tuning", "ui.review", "actions.save"],
   bed_mesh: ["ui.prepare", "ui.home_axes", "ui.measure", "actions.save"],
   screws_tilt: ["ui.home_axes", "ui.measure_2", "ui.adjust", "ui.repeat"],
@@ -476,6 +480,7 @@ function updateCalibrationStatusStrip() {
 function openGeneric(id) {
   rememberCalibration(id);
   genericFrame(id, 0);
+  if (id === "xyz") { session = null; return xyzPage(); }
   if (id === "pid") return pidSetup();
   if (id === "pressure_advance") return pressureSetup();
   if (id === "flow") return flowSetup();
@@ -492,6 +497,12 @@ function openGeneric(id) {
     <p class="safety-note">${msg("ui.the_printer_must_not_be_printing_or_paused_motion_starts")}</p>
     <div class="actions">${button("generic-start", msg("ui.start_calibration"))}</div>`;
   bind("generic-start", async () => { await startCalibration(id); homingPage(id); });
+}
+
+function xyzPage() {
+  renderXyzPage({panel, session, msg, button, bind, frame: step => genericFrame("xyz", step),
+    start: () => startCalibration("xyz"), action: calibrationAction, home: returnHome,
+    render: xyzPage, setNavigationLocked, LocalizedError});
 }
 
 function homingPage(id) {
@@ -855,6 +866,7 @@ function renderResumedGeneric(id) {
   if (state === "ERROR") return resumedErrorPage(id);
   if (state === "HOMING") return resumedRunningPage(id, msg("ui.homing_in_progress"));
   if (state === "RUNNING") return resumedRunningPage(id);
+  if (id === "xyz") return xyzPage();
   if (state === "COMPLETE") {
     if (id === "flow" && Number.isFinite(session.data?.result)) return flowResultPage();
     const saved = new Set(["pid", "bed_mesh", "probe_offset", "input_shaper", "pressure_advance"]).has(id);

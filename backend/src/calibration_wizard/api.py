@@ -188,6 +188,9 @@ def create_app(
     @app.post("/api/wizards/extruder/start")
     async def start(payload: StartRequest, request: Request):
         _check_same_origin(request)
+        xyz = calibrations.sessions.get("xyz")
+        if xyz and xyz.state not in {"COMPLETE", "CANCELLED", "ERROR"}:
+            raise WizardError("Active XYZ check", message_key="xyz.errors.active")
         if filament.locked:
             raise WizardError(
                 "Filamentbewegung läuft bereits.",
@@ -262,6 +265,10 @@ def create_app(
     @app.post("/api/wizards/{wizard_id}/start")
     async def calibration_start(wizard_id: str, payload: CalibrationStartRequest, request: Request):
         _check_same_origin(request)
+        if wizard_id == "xyz" and wizard.session and wizard.session.state not in {
+            WizardState.COMPLETE, WizardState.CANCELLED, WizardState.ERROR
+        }:
+            raise WizardError("Active extruder calibration", message_key="xyz.errors.active")
         if filament.locked:
             raise WizardError(
                 "Filamentbewegung läuft bereits.",
@@ -324,13 +331,14 @@ def create_app(
 
     frontend = settings.frontend_dir
     assets = frontend / "assets"
-    filament_assets = Path(__file__).resolve().parents[3] / "wizards" / "filament"
-    if filament_assets.is_dir():
-        app.mount(
-            "/assets/wizards/filament",
-            StaticFiles(directory=filament_assets),
-            name="filament-assets",
-        )
+    for tool in ("filament", "xyz"):
+        tool_assets = Path(__file__).resolve().parents[3] / "wizards" / tool
+        if tool_assets.is_dir():
+            app.mount(
+                f"/assets/wizards/{tool}",
+                StaticFiles(directory=tool_assets),
+                name=f"{tool}-assets",
+            )
     if assets.is_dir():
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
