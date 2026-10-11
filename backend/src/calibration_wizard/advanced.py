@@ -12,7 +12,7 @@ from .wizard import WizardError
 from .xyz import XyzTravelCheck
 
 CAPABILITY_REQUIREMENTS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
-    "xyz": (("G28", "SAVE_GCODE_STATE", "RESTORE_GCODE_STATE"), ()),
+    "xyz": (("SAVE_GCODE_STATE", "RESTORE_GCODE_STATE"), ()),
     "pid": (("PID_CALIBRATE",), ()),
     "bed_mesh": (("BED_MESH_CALIBRATE",), ("bed_mesh",)),
     "screws_tilt": (("SCREWS_TILT_CALCULATE",), ("screws_tilt_adjust",)),

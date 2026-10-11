@@ -4,5 +4,5 @@
   "description": "Verfahrwege von X, Y und Z messen und Abweichungen wiederholt prüfen.",
   "version": 1,
   "available": true,
-  "requirements": ["G28", "SAVE_GCODE_STATE", "RESTORE_GCODE_STATE"]
+  "requirements": ["SAVE_GCODE_STATE", "RESTORE_GCODE_STATE"]
 }

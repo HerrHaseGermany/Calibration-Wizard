@@ -27,6 +27,7 @@ function harness(printState = "standby") {
     forgetCalibration:noop,setOverviewState:noop,emergencyButton:element,rail:element,workspace:element,statusStrip:element,
     clearError:noop,printerIsReady:()=>true,printerReadinessNotice:()=>"",setText:noop,
     msg:key=>key,t:key=>key,cardIcon:()=>"",updateNavigationAvailability:noop,
+    button:(id,label)=>`<button id="${id}">${label}</button>`,bind:noop,
     document:{querySelectorAll:selector=>panel.querySelectorAll(selector)},cleanConfigWizards:new Set(),
     filamentPage:()=>calls.push("filament"),welcome:()=>calls.push("extruder"),openGeneric:id=>calls.push(id),
     pendingConfigPage:id=>calls.push(id),openSetup:async id=>calls.push(`setup:${id}`),showError:error=>{throw error;},

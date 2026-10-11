@@ -154,6 +154,17 @@ def test_xyz_results_keep_distances_and_directions_in_separate_series():
 
 
 @pytest.mark.asyncio
+async def test_xyz_works_when_builtin_g28_is_missing_from_help_list():
+    printer = MockPrinter()
+    printer.capability_data.commands.remove("G28")
+    manager = CalibrationManager(printer)
+    await manager.start("xyz", {})
+    session = await manager.action("xyz", "home", {}, None)
+    assert session.state == "HOMED"
+    assert printer.gcodes == ["G28"]
+
+
+@pytest.mark.asyncio
 async def test_xyz_missing_position_data_and_low_z_clearance_fail_closed():
     printer, manager = await prepared()
     printer.position[2] = 4

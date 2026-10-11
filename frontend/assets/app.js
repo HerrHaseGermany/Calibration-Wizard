@@ -197,7 +197,9 @@ function configurationOverview() {
   const ready = printerIsReady() && !["printing", "paused"].includes(printer?.print_state);
   panel.innerHTML = `<h1>${msg("configuration.title")}</h1><p class="lead">${msg("configuration.description")}</p>${printerReadinessNotice()}
     <div class="calibration-grid">${wizards.filter(wizard => wizard.setup_available).map(wizard => `<div class="calibration-card ${ready ? "" : "printer-blocked"}" ${ready ? `data-setup="${wizard.id}" role="button" tabindex="0"` : 'aria-disabled="true"'}>
-      <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p></div>`).join("")}</div>`;
+      <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p></div>`).join("")}</div>
+    <div class="actions">${button("configuration-back", msg("actions.back"), "secondary")}</div>`;
+  bind("configuration-back", dashboard);
   const open = async card => { try { await openSetup(card.dataset.setup); } catch(error) { showError(error); } };
   panel.querySelectorAll("[data-setup]").forEach(card => {
     card.addEventListener("click", () => open(card));
