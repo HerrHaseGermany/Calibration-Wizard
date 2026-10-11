@@ -11,7 +11,7 @@ cd Calibration-Wizard
 ./install.sh
 ```
 
-Run the installer from the Git checkout. Archive downloads are intentionally rejected because Moonraker can only update a real, branch-based Git repository. The script detects the checkout's `origin` and active branch, checks prerequisites, creates `.venv`, installs the Python package, installs and enables a hardened systemd unit, adds a separate Moonraker update-manager include, authorizes Moonraker to restart the service, adds a validated nginx `/calibration/` route when the standard Mainsail site is found, and installs a **Tools** link through Mainsail's supported `.theme/navi.json` extension. Existing custom navigation entries are preserved and the previous file is backed up before a change.
+Run the installer from the Git checkout. Archive downloads are intentionally rejected because Moonraker can only update a real, branch-based Git repository. The script detects the checkout's `origin` and active branch, checks prerequisites, creates `.venv`, installs the Python package, installs and enables a hardened systemd unit, authorizes Moonraker to restart the service, adds a validated nginx `/calibration/` route when the standard Mainsail site is found, and installs a **Tools** link through Mainsail's supported `.theme/navi.json` extension. Existing custom navigation entries are preserved and the previous file is backed up before a change. Update-manager configuration is manual; the installer neither creates a separate update-manager file nor changes `moonraker.conf`.
 
 Override nonstandard layouts with `KCW_DATA_DIR`, `KCW_CONFIG_DIR`, `KCW_MOONRAKER_CONFIG`, `KCW_KLIPPER_CONFIG`, `KCW_NGINX_SITE`, or `KCW_MAINSAIL_NAVI`.
 
@@ -27,11 +27,11 @@ If the installer cannot find `/etc/nginx/sites-available/mainsail`, copy the two
 
 ## Updates through Obico or another Moonraker client
 
-Obico uses Moonraker's Update Manager for Klipper installations. Moonraker loads `klipper-calibration-wizard-update.conf` and exposes **klipper-calibration-wizard** to Obico and other compatible clients. The generated entry points to the actual Git origin and branch used for installation. Its current `git_repo` format uses `virtualenv` and `requirements`; deprecated `env` and `install_script` fields are not used. Moonraker pulls the pristine Git checkout, updates Python requirements when necessary, and restarts the Wizard service. On startup, the service updates the existing Mainsail navigation entry to **Tools**, preserving other links and backing up changes. `KCW_MAINSAIL_NAVI` overrides the default `.theme/navi.json` beside `KCW_KLIPPER_CONFIG`. `.venv`, backups, and service environment are ignored/untracked and user configuration is outside the checkout.
+Obico uses Moonraker's Update Manager for Klipper installations. Add **klipper-calibration-wizard** to your own Moonraker update-manager configuration using the [example and migration instructions in the README](../README.md#update-and-uninstall). After a Moonraker restart, the entry is available to Obico and other compatible clients. Moonraker pulls the pristine Git checkout, updates Python requirements when necessary, and restarts the Wizard service. On startup, the service updates the existing Mainsail navigation entry to **Tools**, preserving other links and backing up changes. `KCW_MAINSAIL_NAVI` overrides the default `.theme/navi.json` beside `KCW_KLIPPER_CONFIG`. `.venv`, backups, and service environment are ignored/untracked and user configuration is outside the checkout.
 
 The `dev` update channel follows new commits on the installed branch. Releases are also tagged with semantic versions so clients can report a useful installed version. If local files in the checkout are edited, the Update Manager will report the repository as dirty; keep printer-specific settings in `~/printer_data`, not inside this repository.
 
-After installation or an update, verify the entry through Moonraker:
+After manual configuration or an update, verify the entry through Moonraker:
 
 ```bash
 curl -s http://127.0.0.1:7125/machine/update/status | python3 -m json.tool
@@ -48,7 +48,7 @@ git pull --ff-only
 
 Backups are stored below `~/printer_data/backups/klipper-calibration-wizard/<UTC timestamp>/` with the same relative path as the source config. Stop printing, compare the backup and live file, copy the desired backup over its matching source file, then run `RESTART` from the printer UI. Never restore a whole directory blindly.
 
-Installer backups of existing Moonraker, update-manager, nginx, or Mainsail navigation files use a leading dot (for example `.moonraker.conf.kcw-backup-<timestamp>`). Mainsail hides these safety copies by default; enable its “show hidden files” option when a manual restore is required.
+Installer backups of existing nginx or Mainsail navigation files use a leading dot. Older installers also created Moonraker and update-manager backups (for example `.moonraker.conf.kcw-backup-<timestamp>`). Mainsail hides these safety copies by default; enable its “show hidden files” option when a manual restore is required.
 
 ## Uninstall
 
@@ -56,7 +56,7 @@ Installer backups of existing Moonraker, update-manager, nginx, or Mainsail navi
 ./uninstall.sh
 ```
 
-This stops/removes the service and removes only the managed Moonraker/nginx integration. Calibration backups and the service environment are retained. No Klipper configuration or unrelated include is deleted.
+This stops/removes the service and removes the Moonraker service authorization, nginx route, and Mainsail navigation entry. Remove the Wizard's update-manager section from your own configuration manually, then restart Moonraker. Update-manager files and includes are left untouched. Calibration backups and the service environment are retained. No Klipper configuration or unrelated include is deleted.
 
 ## Troubleshooting
 

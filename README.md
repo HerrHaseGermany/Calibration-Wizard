@@ -49,9 +49,37 @@ Then open `http://<printer>/calibration/`. See [the installation guide](docs/INS
 
 ## Update and uninstall
 
-The installer registers **klipper-calibration-wizard** with Moonraker's Update Manager. For a manual checkout update use `git pull --ff-only && ./update.sh`.
+Moonraker Update Manager configuration is managed manually. The installer does not create an update-manager config file or add an include to `moonraker.conf`.
 
-Run `./uninstall.sh` to remove the service and integration. It deliberately retains user data and backups and never removes foreign Klipper configuration.
+Add the following section to your existing update-manager config (already included by `moonraker.conf`), or directly to `moonraker.conf`. If you already have an entry for this tool, adapt it rather than adding a duplicate.
+
+```ini
+[update_manager klipper-calibration-wizard]
+type: git_repo
+channel: dev
+path: ~/Calibration-Wizard
+origin: https://github.com/HerrHaseGermany/Calibration-Wizard.git
+primary_branch: main
+virtualenv: ~/Calibration-Wizard/.venv
+requirements: requirements.txt
+managed_services: klipper-calibration-wizard
+info_tags:
+  desc=Klipper Calibration Wizard
+```
+
+Adjust `path` and `virtualenv` to your installation directory, and `origin` and `primary_branch` to your checkout. Check these values with `pwd`, `git remote get-url origin`, and `git branch --show-current` from the repository. The `dev` channel follows commits on the configured branch. The installer adds the service to `~/printer_data/moonraker.asvc` so Moonraker can restart it after updates. See the [Moonraker configuration reference](https://moonraker.readthedocs.io/en/latest/configuration/#git-repo-configuration) for available options.
+
+After saving, restart Moonraker:
+
+```bash
+sudo systemctl restart moonraker.service
+```
+
+For installations made with an older installer, first move the section from `~/printer_data/config/klipper-calibration-wizard-update.conf` into your own config, unless it is already present there. Then remove `[include klipper-calibration-wizard-update.conf]` from `moonraker.conf` and delete the old file before restarting Moonraker. Keep exactly one `[update_manager klipper-calibration-wizard]` section. Existing files are not automatically changed or removed.
+
+For a manual checkout update use `git pull --ff-only && ./update.sh`.
+
+Run `./uninstall.sh` to remove the service and integration. Remove the Wizard's update-manager section from your own Moonraker config manually and restart Moonraker afterwards. The uninstaller retains user data and backups and never removes foreign Klipper configuration.
 
 ## Configuration
 

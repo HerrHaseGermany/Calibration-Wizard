@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Manage Moonraker Update Manager configuration manually; the installer no longer creates a config file or adds an include.
+- Document a customizable update-manager entry and migration from the previously generated file in the README.
+- Preserve user-managed update-manager files and includes during uninstall.
+
 ## 0.1.3
 
 - Complete German and English translations for calibration instructions, status displays, setup fields, confirmations, errors, and warnings.

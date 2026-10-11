@@ -23,7 +23,7 @@ if [[ "${1:-}" == "--check" ]]; then
   python3 -c 'import sys; assert sys.version_info >= (3, 9), "Python 3.9+ is required"'
   for required in \
     pyproject.toml requirements.txt frontend/index.html \
-    config/klipper-calibration-wizard.service.in config/moonraker-update.conf.in \
+    config/klipper-calibration-wizard.service.in \
     config/mainsail-navi-entry.json scripts/configure_mainsail.py; do
     [[ -f "${PROJECT_DIR}/${required}" ]] || { printf 'Missing install asset: %s\n' "${required}" >&2; exit 1; }
   done
@@ -42,22 +42,12 @@ KLIPPER_CONFIG="${KCW_KLIPPER_CONFIG:-${CONFIG_DIR}/printer.cfg}"
 BACKUP_DIR="${KCW_BACKUP_DIR:-${DATA_DIR}/backups/klipper-calibration-wizard}"
 ENV_DIR="${DATA_DIR}/config/.klipper-calibration-wizard"
 ENV_FILE="${ENV_DIR}/service.env"
-UPDATE_FILE="${CONFIG_DIR}/klipper-calibration-wizard-update.conf"
 ASVC_FILE="${DATA_DIR}/moonraker.asvc"
 NGINX_SITE="${KCW_NGINX_SITE:-/etc/nginx/sites-available/mainsail}"
 MAINSAIL_NAVI="${KCW_MAINSAIL_NAVI:-${CONFIG_DIR}/.theme/navi.json}"
 
 log() { printf '[calibration-wizard] %s\n' "$*"; }
 fail() { printf '[calibration-wizard] ERROR: %s\n' "$*" >&2; exit 1; }
-backup_file() {
-  local source="$1"
-  if [[ -f "${source}" ]]; then
-    local stamp backup
-    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-    backup="$(dirname "${source}")/.$(basename "${source}").kcw-backup-${stamp}"
-    cp -a "${source}" "${backup}"
-  fi
-}
 render() {
   sed -e "s|@SERVICE_USER@|${TARGET_USER}|g" \
       -e "s|@SERVICE_GROUP@|${TARGET_GROUP}|g" \
@@ -66,9 +56,7 @@ render() {
       -e "s|@CONFIG_DIR@|${CONFIG_DIR}|g" \
       -e "s|@KLIPPER_CONFIG@|${KLIPPER_CONFIG}|g" \
       -e "s|@BACKUP_DIR@|${BACKUP_DIR}|g" \
-      -e "s|@MAINSAIL_NAVI@|${MAINSAIL_NAVI}|g" \
-      -e "s|@GIT_ORIGIN@|${GIT_ORIGIN}|g" \
-      -e "s|@GIT_BRANCH@|${GIT_BRANCH}|g" "$1"
+      -e "s|@MAINSAIL_NAVI@|${MAINSAIL_NAVI}|g" "$1"
 }
 
 [[ "$(uname -s)" == "Linux" ]] || fail "Installation is supported on Linux only. Use KCW_MOCK=true for local development."
@@ -99,14 +87,7 @@ render "${PROJECT_DIR}/config/klipper-calibration-wizard.service.in" > "${tmp_se
 sudo install -m 0644 "${tmp_service}" "/etc/systemd/system/${SERVICE_NAME}.service"
 rm -f "${tmp_service}"
 
-log "Installing Moonraker update-manager include"
-backup_file "${UPDATE_FILE}"
-render "${PROJECT_DIR}/config/moonraker-update.conf.in" > "${UPDATE_FILE}"
-chown "${TARGET_USER}:${TARGET_GROUP}" "${UPDATE_FILE}"
-if ! grep -Fqx '[include klipper-calibration-wizard-update.conf]' "${MOONRAKER_CONFIG}"; then
-  backup_file "${MOONRAKER_CONFIG}"
-  printf '\n[include klipper-calibration-wizard-update.conf]\n' >> "${MOONRAKER_CONFIG}"
-fi
+log "Authorizing Moonraker to restart the service"
 touch "${ASVC_FILE}"
 if ! grep -Fqx "${SERVICE_NAME}" "${ASVC_FILE}"; then
   printf '%s\n' "${SERVICE_NAME}" >> "${ASVC_FILE}"
@@ -144,3 +125,4 @@ for _attempt in {1..20}; do
 done
 [[ "${healthy}" == true ]] || fail "Service health check failed; inspect journalctl -u ${SERVICE_NAME}"
 log "Installation complete: refresh Mainsail or open http://printer/calibration/"
+log "Configure Moonraker Update Manager manually if needed; see README.md"
