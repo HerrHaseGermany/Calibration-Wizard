@@ -1,4 +1,4 @@
-import { t, msg } from "./i18n.js?v=20261012-2";
+import { t, msg } from "./i18n.js?v=20261012-3";
 
 const esc = value => String(value ?? "").replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[character]);
 

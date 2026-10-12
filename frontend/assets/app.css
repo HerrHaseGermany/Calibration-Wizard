@@ -239,6 +239,7 @@ a { color:var(--accent); }
 .embedded .shell { min-height:0; }
 .embedded-actions .header-button.icon-only { width:48px; height:48px; border-radius:0; margin-right:-16px; }
 #integration-banner { border-color:var(--warning); background:color-mix(in srgb,var(--warning) 12%,var(--surface)); }
+#integration-banner.building { border-color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,var(--surface)); }
 input[type="checkbox"] { width:18px; min-height:18px; height:18px; accent-color:var(--accent); vertical-align:middle; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 @media (max-width:760px) { .embedded main { padding:0; } .panel-toolbar { gap:8px; } .panel-heading { font-size:18px; } .embedded-actions { gap:8px; } }

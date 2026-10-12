@@ -12,7 +12,7 @@ export async function loadLocales(loader = async url => {
   if (!response.ok) throw new Error(`Could not load locale: ${response.status}`);
   return response.json();
 }) {
-  const entries = await Promise.all(["de", "en"].map(async language => [language, await loader(new URL(`./locales/${language}.json?v=20261010-9`, import.meta.url))]));
+  const entries = await Promise.all(["de", "en"].map(async language => [language, await loader(new URL(`./locales/${language}.json?v=20261012-1`, import.meta.url))]));
   Object.assign(catalogs, Object.fromEntries(entries));
 }
 

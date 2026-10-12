@@ -3,10 +3,11 @@ export function mountIntegration({base, root, t, canRepair, apiError}) {
   function render() {
     root.replaceChildren();
     root.classList.toggle("hidden", !current?.configured || current?.healthy);
+    root.classList.toggle("building", Boolean(current?.busy));
     if (!current?.configured || current.healthy) return;
     const title = document.createElement("strong");
     const copy = document.createElement("p");
-    title.textContent = t("integration.missing");
+    title.textContent = t(current.busy ? "integration.building_title" : "integration.missing");
     const key = current.busy ? "integration.building" : !current.supported ? "integration.unsupported" : !current.can_repair ? "integration.setup" : "integration.description";
     copy.textContent = t(key);
     root.append(title, copy);

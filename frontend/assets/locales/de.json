@@ -620,6 +620,7 @@
   "xyz.errors.active": "Beende die aktive Kalibrierung, bevor du einen weiteren Ablauf startest.",
   "xyz.result.series": "Messreihe: {direction}{distance} mm",
   "integration.missing": "Mainsail-Integration fehlt oder wurde verändert",
+  "integration.building_title": "Mainsail-Integration wird vorbereitet",
   "integration.description": "Die Tools-Seite kann für diese Mainsail-Version wiederhergestellt werden. Dabei wird Mainsail neu gebaut. Öffne danach Mainsail erneut.",
   "integration.building": "Die Mainsail-Integration wird vorbereitet. Das kann einige Minuten dauern.",
   "integration.unsupported": "Für diese Mainsail-Version ist noch kein geprüfter Patch verfügbar. Nutze vorerst diese Standalone-Seite.",

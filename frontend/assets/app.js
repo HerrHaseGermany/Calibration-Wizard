@@ -1,8 +1,8 @@
 import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261011-1";
 import { renderXyzPage } from "./wizards/xyz/frontend.mjs?v=20261011-1";
-import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261012-2";
-import { adjustment, positionMap } from "./positions.mjs?v=20261012-2";
-import { mountIntegration } from "./integration.mjs?v=20261012-1";
+import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261012-3";
+import { adjustment, positionMap } from "./positions.mjs?v=20261012-3";
+import { mountIntegration } from "./integration.mjs?v=20261012-2";
 
 await loadLocales();
 

@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import {mountIntegration} from "../frontend/assets/integration.mjs";
 
 function element() {
+  const classes = new Set();
   return {
-    children: [], listeners: {}, classList: {toggle() {}},
+    children: [], listeners: {}, classList: {
+      toggle(name, enabled) {if (enabled) classes.add(name); else classes.delete(name);},
+      contains(name) {return classes.has(name);},
+    },
     replaceChildren() {this.children = [];},
     append(...children) {this.children.push(...children);},
     addEventListener(name, handler) {this.listeners[name] = handler;},
@@ -32,6 +36,7 @@ test("repair notice queues a fixed endpoint and displays build status", async ()
     const ui = mountIntegration({base: new URL("http://printer/api/klipper-tools/api/"), root,
       t: key => key, canRepair: () => idle, apiError: value => new Error(value.detail)});
     await ui.refresh();
+    assert.equal(root.children[0].textContent, "integration.missing");
     assert.equal(root.children.find(child => child.className === "button secondary").disabled, true);
     idle = true;
     ui.render();
@@ -42,10 +47,18 @@ test("repair notice queues a fixed endpoint and displays build status", async ()
     assert.equal(mutation.url, "http://printer/api/klipper-tools/api/mainsail/repair");
     assert.equal(mutation.options.body, undefined);
     assert.ok(root.children.some(child => child.textContent === "integration.building"));
+    assert.equal(root.children[0].textContent, "integration.building_title");
+    assert.equal(root.classList.contains("building"), true);
+    assert.equal(root.children.some(child => child.textContent === "integration.missing"), false);
     assert.equal(root.children.some(child => child.className === "button secondary"), false);
     current = {...current, busy: false, supported: false};
     await ui.refresh();
     assert.ok(root.children.some(child => child.textContent === "integration.unsupported"));
+    assert.equal(root.classList.contains("building"), false);
+    current = {...current, healthy: true};
+    await ui.refresh();
+    assert.equal(root.classList.contains("hidden"), true);
+    assert.equal(root.children.length, 0);
   } finally {
     Object.assign(globalThis, saved);
   }
