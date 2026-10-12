@@ -57,7 +57,8 @@ if (embedded) {
   const sendFrameState = () => {
     const dialog = document.querySelector("dialog[open]");
     const height = Math.ceil(Math.max(main.getBoundingClientRect().height + 4, dialog ? dialog.scrollHeight + 32 : 0));
-    window.parent.postMessage({type: "kcw-navigation-state", locked: integrationNavigationLocked(), height}, window.location.origin);
+    const width = workspace.classList.contains("filament-mode") ? 640 : 1152;
+    window.parent.postMessage({type: "kcw-navigation-state", locked: integrationNavigationLocked(), height, width}, window.location.origin);
   };
   // Report layout changes immediately, before the next paint, instead of waiting for polling.
   const resizeObserver = new ResizeObserver(sendFrameState);

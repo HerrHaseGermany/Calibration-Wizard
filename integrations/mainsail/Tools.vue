@@ -6,10 +6,13 @@
 import Vue from 'vue'
 
 export default Vue.extend({
-    data: () => ({ locked: false, contentHeight: null as number | null, removeGuard: null as null | (() => void) }),
+    data: () => ({ locked: false, contentHeight: null as number | null, contentWidth: 1152, removeGuard: null as null | (() => void) }),
     computed: {
         frameStyle(): Record<string, string> {
-            return this.contentHeight === null ? {} : { height: `${this.contentHeight}px`, minHeight: '0' }
+            return {
+                maxWidth: `${this.contentWidth}px`,
+                ...(this.contentHeight === null ? {} : { height: `${this.contentHeight}px`, minHeight: '0' }),
+            }
         },
         appearanceKey(): string {
             return `${this.$vuetify.theme.dark}:${this.$i18n.locale}:${this.$store.state.gui.uiSettings.primary}`
@@ -77,6 +80,10 @@ export default Vue.extend({
             if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return
             if (event.data?.type === 'kcw-navigation-state' && typeof event.data.locked === 'boolean') {
                 this.locked = event.data.locked
+                const width = event.data.width
+                if (typeof width === 'number' && Number.isFinite(width) && width > 0 && width <= 1152) {
+                    this.contentWidth = width
+                }
                 const height = event.data.height
                 if (height === null) this.contentHeight = null
                 else if (typeof height === 'number' && Number.isFinite(height) && height > 0 && height <= 100000) {
