@@ -32,20 +32,61 @@ A safety-first, modular calibration center for Klipper printers. It guides users
 ## Requirements
 
 - A Debian-family Klipper host with Python 3.9+, systemd, Git, Moonraker, and Klipper.
-- Mainsail 2.19.0, Node.js 20.19+ or 22.12+, npm, git and zip for the native Tools page; nginx for `/tools/` routing. Fluidd or custom proxies can use the documented manual route.
+- Mainsail **2.19.0** for the native Tools tab. This is currently the only checked release; other releases are not automatically patched.
+- Node.js **22.12+ (22.x recommended)**, or 20.19+ (20.x), plus npm, Git and zip to build the Mainsail extension. Node.js must also be available to the systemd build service.
+- nginx for `/tools/` routing. Fluidd or custom proxies can use the documented manual route.
 - SSH/sudo access for installation.
 
 The code makes no assumptions about MCU, control board, kinematics, or printer brand. v0.1 calibrates the primary Klipper extruder; multi-extruder hardware still requires real-printer validation.
 
 ## Install
 
+### Prepare the host and install Node.js
+
+Run these commands over SSH **on the printer host**, before running the installer. Klipper, Moonraker and Mainsail must already be installed.
+
+Install the required Debian/Ubuntu/Armbian packages:
+
 ```bash
+sudo apt update
+sudo apt install -y python3 python3-venv git curl ca-certificates zip
+```
+
+Check whether a suitable Node.js and npm are already installed:
+
+```bash
+node --version
+npm --version
+```
+
+If Node.js is missing or too old, install Node.js 22 system-wide using the [NodeSource Debian installation instructions](https://github.com/nodesource/distributions). This method supports **arm64** hosts such as the BIGTREETECH CB2 and **amd64** hosts:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/klipper-tools-nodesource-setup.sh
+sudo bash /tmp/klipper-tools-nodesource-setup.sh
+sudo apt install -y nodejs
+node --version
+npm --version
+```
+
+The NodeSource `nodejs` package includes npm. The Node.js version should be `v22.12.0` or newer within the 22.x series. Use a system-wide installation so the background build service can find Node.js and npm; a shell-only installation through nvm requires a suitable `KCW_BUILD_PATH` as described in [the installation guide](docs/INSTALLATION.md).
+
+### Install Klipper Tools
+
+```bash
+cd ~
 git clone https://github.com/HerrHaseGermany/Calibration-Wizard.git
 cd Calibration-Wizard
 ./install.sh
 ```
 
 Then open `http://<printer>/tools/`. The independent UI and Repair action remain available at `http://<printer>/api/klipper-tools/`. See [the installation guide](docs/INSTALLATION.md) for nonstandard paths, authentication, update behavior, backups, restore, and troubleshooting.
+
+The installer automatically configures the Tools service, nginx routes and Mainsail extension for the standard layout. The extension builds in the background; allow several minutes on a small printer host. Wait for the build to finish, then reload Mainsail to see the Tools tab. It includes preloading, Mainsail theme/language synchronization, the responsive layout and content-based frame height without additional UI configuration. Build status and Repair are available in the independent UI; inspect build logs with:
+
+```bash
+journalctl -u klipper-tools-mainsail-repair.service -n 100 --no-pager
+```
 
 ## Update and uninstall
 
