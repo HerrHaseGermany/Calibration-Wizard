@@ -32,7 +32,7 @@ def test_installs_sidebar_entry_and_preserves_existing_items(tmp_path: Path):
 
     values = json.loads(navigation.read_text(encoding="utf-8"))
     assert values[0] == existing[0]
-    assert values[1]["href"] == "/calibration/"
+    assert values[1]["href"] == "/tools/"
     backup = Path(result.stdout.strip())
     assert backup.exists()
     assert backup.name.startswith(".navi.json.kcw-backup-")
@@ -78,7 +78,7 @@ def test_remove_deletes_only_the_managed_entry(tmp_path: Path):
     assert json.loads(navigation.read_text(encoding="utf-8")) == existing[:1]
 
 
-def test_service_start_renames_navigation_after_a_moonraker_update(tmp_path, monkeypatch):
+def test_service_start_removes_legacy_navigation_after_a_moonraker_update(tmp_path, monkeypatch):
     monkeypatch.delenv("KCW_MAINSAIL_NAVI", raising=False)
     navigation = tmp_path / ".theme" / "navi.json"
     navigation.parent.mkdir()
@@ -90,8 +90,7 @@ def test_service_start_renames_navigation_after_a_moonraker_update(tmp_path, mon
     sync_mainsail_navigation(settings)
 
     entries = json.loads(navigation.read_text())
-    assert entries[0] == camera
-    assert entries[1]["title"] == "Tools"
+    assert entries == [camera]
     assert len(list(navigation.parent.glob(".navi.json.kcw-backup-*"))) == 1
 
 
@@ -104,4 +103,4 @@ def test_service_start_honors_custom_navigation_and_skips_mock(tmp_path, monkeyp
     sync_mainsail_navigation(settings)
     assert navigation.read_text() == original
     sync_mainsail_navigation(replace(settings, mock=False))
-    assert json.loads(navigation.read_text())[0]["title"] == "Tools"
+    assert json.loads(navigation.read_text()) == []

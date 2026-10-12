@@ -214,3 +214,6 @@ a { color: #ff9a6e; }
 @media (max-width: 410px) {
   .brand > span:last-child { display:none; }
 }
+
+.embedded #mainsail-button { display:none; }
+#integration-banner p { margin:0.5rem 0; }

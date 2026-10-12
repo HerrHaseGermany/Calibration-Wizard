@@ -31,8 +31,8 @@ def sync_mainsail_navigation(settings: Settings) -> None:
             [
                 sys.executable,
                 str(root / "scripts" / "configure_mainsail.py"),
+                "--remove",
                 str(navigation),
-                str(root / "config" / "mainsail-navi-entry.json"),
             ],
             check=True,
             capture_output=True,

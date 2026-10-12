@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for a Klipper Tools Mainsail repair request
+
+[Path]
+PathExists=@MAINSAIL_STATE@/request
+Unit=klipper-tools-mainsail-repair.service
+
+[Install]
+WantedBy=multi-user.target

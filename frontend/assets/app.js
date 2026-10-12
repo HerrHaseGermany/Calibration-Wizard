@@ -2,8 +2,12 @@ import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261011-1
 import { renderXyzPage } from "./wizards/xyz/frontend.mjs?v=20261011-1";
 import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261010-9";
 import { adjustment, positionMap } from "./positions.mjs?v=20261010-9";
+import { mountIntegration } from "./integration.mjs?v=20261012-1";
 
 await loadLocales();
+
+const embedded = window.self !== window.top;
+document.documentElement.classList.toggle("embedded", embedded);
 
 const base = new URL("./api/", window.location.href);
 const panel = document.querySelector("#panel");
@@ -30,6 +34,24 @@ const resumeStorageKey = "kcw-active-calibration";
 const pendingResolutionStorageKey = "kcw-pending-config-resolution";
 const cleanConfigWizards = new Set(["pid", "bed_mesh", "probe_offset", "input_shaper"]);
 let resolvingPendingConfig = false;
+
+function integrationNavigationLocked() {
+  // Pressure Advance deliberately requires opening Mainsail's Files page to start the tower.
+  return navigationLocked || resolvingPendingConfig ||
+    (session?.state === "RUNNING" && activeWizard !== "pressure_advance");
+}
+
+const integrationUi = mountIntegration({
+  base, root: document.querySelector("#integration-banner"), t, apiError,
+  canRepair: () => printerIsReady() && !bootstrapping && !activeWizard && !["printing", "paused"].includes(printer?.print_state) && !integrationNavigationLocked(),
+});
+// Mainsail's route guard accepts messages only from this iframe and this origin.
+if (embedded) setInterval(() => {
+  window.parent.postMessage({type: "kcw-navigation-state", locked: integrationNavigationLocked()}, window.location.origin);
+}, 250);
+window.addEventListener("beforeunload", event => {
+  if (integrationNavigationLocked()) { event.preventDefault(); event.returnValue = ""; }
+});
 
 function rememberCalibration(wizard, id = null) {
   sessionStorage.setItem(resumeStorageKey, JSON.stringify({wizard, id}));
@@ -63,7 +85,8 @@ function printerReadinessNotice() {
     disconnected: msg("ui.klipper_tools_cannot_reach_klipper_right_now_check_the_connection"),
   }[state] || msg("ui.klipper_is_currently_not_ready_state_value_check_the_printer", {value0: state});
   const detail = printer?.state_message ? `<p class="printer-state-message">${esc(printer.state_message)}</p>` : "";
-  return `<aside class="printer-readiness" role="alert"><div><strong>${msg("ui.klipper_is_not_ready")}</strong><p>${copy}</p>${detail}</div><a class="button secondary" href="/">${msg("ui.go_to_mainsail")}</a></aside>`;
+  const link = embedded ? "" : `<a class="button secondary" href="/">${msg("ui.go_to_mainsail")}</a>`;
+  return `<aside class="printer-readiness" role="alert"><div><strong>${msg("ui.klipper_is_not_ready")}</strong><p>${copy}</p>${detail}</div>${link}</aside>`;
 }
 
 function setOverviewState(current) {
@@ -77,7 +100,7 @@ function setOverviewState(current) {
 const language = document.querySelector("#language");
 language.value = getLanguagePreference();
 setLocale(getLanguagePreference());
-language.addEventListener("change", () => { setLocale(language.value); applyTranslations(); });
+language.addEventListener("change", () => { setLocale(language.value); applyTranslations(); integrationUi.render(); });
 applyTranslations();
 window.addEventListener("languagechange", () => {
   if (getLanguagePreference() === "system") { setLocale("system"); applyTranslations(); }
@@ -267,7 +290,8 @@ emergencyButton.addEventListener("click", async () => {
     if (!response.ok) throw apiError(result);
     session = null;
     setText(emergencyButton.querySelector(".header-button-label"), () => t("ui.stopped"));
-    window.location.assign(document.querySelector("#mainsail-button").href);
+    if (embedded) window.top.location.assign("/");
+    else window.location.assign(document.querySelector("#mainsail-button").href);
   } catch (error) {
     emergencyButton.disabled = false;
     setText(emergencyButton.querySelector(".header-button-label"), () => t("ui.emergency_stop"));
@@ -975,6 +999,7 @@ function updateStatus(data) {
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];
   updateCalibrationStatusStrip();
   updateConnectionStatus();
+  integrationUi.render();
   if (!bootstrapping && pendingResolution() && continueAfterPendingResolution()) return;
   if (!bootstrapping && previousReadiness !== printerReadinessKey()) {
     if (isOverview) dashboard();

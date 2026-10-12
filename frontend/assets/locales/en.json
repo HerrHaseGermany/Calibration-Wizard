@@ -618,5 +618,14 @@
   "xyz.errors.homing": "All axes must be homed before the test.",
   "xyz.errors.kinematics": "This travel check currently supports Cartesian, CoreXY and CoreXZ.",
   "xyz.errors.active": "End the active calibration before starting another workflow.",
-  "xyz.result.series": "Measurement series: {direction}{distance} mm"
+  "xyz.result.series": "Measurement series: {direction}{distance} mm",
+  "integration.missing": "Mainsail integration is missing or has changed",
+  "integration.description": "The Tools page can be restored for this Mainsail version. This rebuilds Mainsail. Reopen Mainsail afterwards.",
+  "integration.building": "The Mainsail integration is being prepared. This may take several minutes.",
+  "integration.unsupported": "No checked patch is available for this Mainsail version yet. Use this standalone page for now.",
+  "integration.setup": "Repair is not configured yet. Rerun the installer on the printer.",
+  "integration.repair": "Repair",
+  "integration.errors.unavailable": "Repair is currently unavailable. Check the version and installation status.",
+  "integration.errors.busy": "Finish printing, calibration or filament movement before repairing.",
+  "integration.errors.write": "The repair request could not be saved. Check installation and directory permissions."
 }

@@ -25,7 +25,7 @@ def load_navigation(path: Path) -> list[dict[str, Any]]:
 
 
 def is_managed(item: dict[str, Any]) -> bool:
-    return item.get("href", "").rstrip("/") == "/calibration"
+    return item.get("href", "").rstrip("/") in {"/calibration", "/tools"}
 
 
 def write_navigation(path: Path, navigation: list[dict[str, Any]]) -> Path | None:
@@ -74,7 +74,7 @@ def main() -> None:
         except (OSError, json.JSONDecodeError) as exc:
             raise SystemExit(f"Cannot read sidebar entry: {args.entry}: {exc}") from exc
         if not isinstance(entry, dict) or not is_managed(entry):
-            raise SystemExit("Sidebar entry must point to /calibration/")
+            raise SystemExit("Sidebar entry must point to /tools/")
         updated.append(entry)
 
     if updated == navigation:

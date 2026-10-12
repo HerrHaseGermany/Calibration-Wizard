@@ -25,14 +25,14 @@ A safety-first, modular calibration center for Klipper printers. It guides users
 - Include-aware Klipper configuration source resolution with compare-before-write and atomic replacement.
 - Live browser status over WebSocket.
 - Hardware-independent mock printer.
-- Standalone service and UI; no patches to Klipper, Moonraker, Mainsail, or Fluidd.
-- Systemd, nginx `/calibration/`, and current Moonraker `git_repo` Update Manager integration.
+- Standalone service and UI, plus a small checked Mainsail patch for a native Tools page. Klipper and Moonraker source files remain untouched.
+- Systemd, nginx `/tools/`, and current Moonraker `git_repo` Update Manager integration.
 - German and English UI, selected automatically from the preferred browser languages (System / Browser), with a persistent manual override.
 
 ## Requirements
 
 - A Debian-family Klipper host with Python 3.9+, systemd, Git, Moonraker, and Klipper.
-- Mainsail/nginx for automatic `/calibration/` routing. Fluidd or custom proxies can use the documented manual route.
+- Mainsail 2.19.0, Node.js 20.19+ or 22.12+, npm, git and zip for the native Tools page; nginx for `/tools/` routing. Fluidd or custom proxies can use the documented manual route.
 - SSH/sudo access for installation.
 
 The code makes no assumptions about MCU, control board, kinematics, or printer brand. v0.1 calibrates the primary Klipper extruder; multi-extruder hardware still requires real-printer validation.
@@ -45,7 +45,7 @@ cd Calibration-Wizard
 ./install.sh
 ```
 
-Then open `http://<printer>/calibration/`. See [the installation guide](docs/INSTALLATION.md) for nonstandard paths, authentication, update behavior, backups, restore, and troubleshooting.
+Then open `http://<printer>/tools/`. The independent UI and Repair action remain available at `http://<printer>/api/klipper-tools/`. See [the installation guide](docs/INSTALLATION.md) for nonstandard paths, authentication, update behavior, backups, restore, and troubleshooting.
 
 ## Update and uninstall
 
@@ -133,10 +133,16 @@ load. Input Shaper requires both `[resonance_tester]` and the commands `MEASURE_
 `SHAPER_CALIBRATE`. Its card remains visible but disabled until those requirements are present.
 
 Future work includes calibration history, printer profiles, first-layer analysis, and community
-wizards. The installer adds an update-safe **Calibration** entry to Mainsail's sidebar through its
-supported `.theme/navi.json` extension. Existing custom navigation entries are preserved, and the
-standalone wizard remains available at `/calibration/`.
+wizards. The installer builds the checked Mainsail release with a native **Tools** route at
+`/tools/`. Its main content embeds the Wizard while retaining Mainsail's sidebar and topbar.
+The independent UI stays available at `/api/klipper-tools/`; old `/calibration/` links redirect
+there. If Mainsail overwrites the extension, its files are detected as missing or changed and
+the standalone UI offers **Repair** for a supported release. Unknown releases are reported
+without deploying an unchecked patch. See [Mainsail integration](docs/MAINSAIL-INTEGRATION.md).
 
 ## Troubleshooting
 
 Start with `journalctl -u klipper-calibration-wizard -n 100 --no-pager` and `/api/status`. A save refusal is intentional when the source include cannot be identified safely. More commands and recovery guidance are in [docs/INSTALLATION.md](docs/INSTALLATION.md).
+
+On an existing printer, rerun `./install.sh` after updating to install the new nginx routes
+and the repair service. A package update alone cannot install these system integrations.

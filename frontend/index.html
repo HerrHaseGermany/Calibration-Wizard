@@ -7,7 +7,7 @@
     <title>Klipper Tools</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=20260929-6" />
     <script>document.documentElement.dataset.theme=(localStorage.getItem("kcw-theme-mode")||"system")==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):localStorage.getItem("kcw-theme-mode");</script>
-    <link rel="stylesheet" href="assets/app.css?v=20261011-3" />
+    <link rel="stylesheet" href="assets/app.css?v=20261012-1" />
   </head>
   <body>
     <div class="shell">
@@ -43,11 +43,12 @@
             <div><span id="status-label-2"><span data-i18n="ui.target"></span></span><strong id="target"><span data-i18n="ui.c_2"></span></strong></div>
             <div><span>Klipper</span><strong id="klipper-state"><span data-i18n="ui.unknown"></span></strong></div>
           </div>
+          <aside id="integration-banner" class="notice hidden" role="status"></aside>
           <div id="notice" class="notice hidden" role="alert"></div>
           <article id="panel" class="panel" aria-live="polite"></article>
         </section>
       </main>
     </div>
-    <script type="module" src="assets/app.js?v=20261011-5"></script>
+    <script type="module" src="assets/app.js?v=20261012-1"></script>
   </body>
 </html>

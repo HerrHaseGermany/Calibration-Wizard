@@ -2,14 +2,14 @@
 
 ## Decision summary
 
-Klipper Calibration Wizard is a separate, loopback-bound service. It talks to Klipper only through Moonraker's documented HTTP API and exposes its own REST and WebSocket API plus a static web client. Nginx maps the application to `/calibration/`; Mainsail and Fluidd source files remain untouched.
+Klipper Calibration Wizard is a separate, loopback-bound service. It talks to Klipper only through Moonraker's documented HTTP API and exposes its own REST and WebSocket API plus a static web client. Nginx maps the native Mainsail page to `/tools/` and the Wizard to `/tools/app/` and `/tools/standalone/`. A checked Mainsail patch provides the native route; a separate unprivileged systemd worker builds and repairs it.
 
 A Moonraker in-process component was rejected for v0.1. Such a component would couple releases to Moonraker internals and failure lifecycle, while the supported external API already supplies printer objects, G-code execution, connection state, and live event semantics. An external service also gives calibration code a separate virtual environment, process boundary, test harness, and update entry. A future agent connection may improve event delivery but is not required for printer control.
 
 ## Components
 
 ```text
-Browser /calibration/
+Browser /tools/
   │ REST commands + WebSocket status
   ▼
 Calibration Wizard service (127.0.0.1:7130)

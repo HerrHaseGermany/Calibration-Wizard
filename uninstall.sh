@@ -8,6 +8,17 @@ CONFIG_DIR="${KCW_CONFIG_DIR:-${DATA_DIR}/config}"
 ASVC_FILE="${DATA_DIR}/moonraker.asvc"
 NGINX_SITE="${KCW_NGINX_SITE:-/etc/nginx/sites-available/mainsail}"
 MAINSAIL_NAVI="${KCW_MAINSAIL_NAVI:-${CONFIG_DIR}/.theme/navi.json}"
+MAINSAIL_DIR="${KCW_MAINSAIL_DIR:-${TARGET_HOME}/mainsail}"
+MAINSAIL_STATE="${KCW_MAINSAIL_STATE_DIR:-${CONFIG_DIR}/.klipper-calibration-wizard/mainsail}"
+
+sudo systemctl disable --now klipper-tools-mainsail-repair.path 2>/dev/null || true
+sudo systemctl stop klipper-tools-mainsail-repair.service 2>/dev/null || true
+if [[ -f "${MAINSAIL_STATE}/last-backup.json" ]]; then
+  sudo -u "${TARGET_USER}" "${PROJECT_DIR}/.venv/bin/python" -m calibration_wizard.mainsail_build \
+    --restore --root "${MAINSAIL_DIR}" --state "${MAINSAIL_STATE}" \
+    --template "${PROJECT_DIR}/integrations/mainsail/Tools.vue"
+fi
+sudo rm -f /etc/systemd/system/klipper-tools-mainsail-repair.service /etc/systemd/system/klipper-tools-mainsail-repair.path
 
 sudo systemctl disable --now klipper-calibration-wizard.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/klipper-calibration-wizard.service

@@ -15,6 +15,9 @@ class Settings:
     klipper_config: Path | None
     backup_dir: Path
     frontend_dir: Path
+    mainsail_dir: Path | None = None
+    mainsail_state_dir: Path | None = None
+    mainsail_repair_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -29,4 +32,12 @@ class Settings:
             klipper_config=Path(config_value) if config_value else None,
             backup_dir=Path(os.getenv("KCW_BACKUP_DIR", str(project_root / "backups"))),
             frontend_dir=Path(os.getenv("KCW_FRONTEND_DIR", str(project_root / "frontend"))),
+            mainsail_dir=Path(os.environ["KCW_MAINSAIL_DIR"])
+            if os.getenv("KCW_MAINSAIL_DIR")
+            else None,
+            mainsail_state_dir=Path(os.environ["KCW_MAINSAIL_STATE_DIR"])
+            if os.getenv("KCW_MAINSAIL_STATE_DIR")
+            else None,
+            mainsail_repair_enabled=os.getenv("KCW_MAINSAIL_REPAIR_ENABLED", "false").lower()
+            in {"1", "true", "yes"},
         )

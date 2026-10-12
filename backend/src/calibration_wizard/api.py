@@ -6,13 +6,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .advanced import CalibrationManager
 from .configuration import KlipperConfigRepository
 from .filament import FilamentWizard
+from .mainsail_integration import MainsailIntegration
 from .models import (
     CalibrationActionRequest,
     CalibrationStartRequest,
@@ -65,6 +66,12 @@ def create_app(
     calibrations = CalibrationManager(printer, config)
     setup_manager = CalibrationSetupManager(printer, config)
     filament = FilamentWizard(printer, lambda: [wizard.session, *calibrations.sessions.values()])
+    integration = MainsailIntegration(
+        settings.mainsail_dir,
+        settings.mainsail_state_dir or settings.backup_dir / "mainsail",
+        enabled=settings.mainsail_repair_enabled and not settings.mock,
+    )
+    repair_lock = asyncio.Lock()
 
     app = FastAPI(
         title="Klipper Calibration Wizard",
@@ -77,6 +84,7 @@ def create_app(
     app.state.wizard = wizard
     app.state.calibrations = calibrations
     app.state.setup_manager = setup_manager
+    app.state.mainsail_integration = integration
 
     @app.middleware("http")
     async def frontend_cache_control(request: Request, call_next):
@@ -108,17 +116,69 @@ def create_app(
     @app.get("/api/status")
     async def status():
         snapshot = await printer.snapshot()
+        sessions = [wizard.session, *calibrations.sessions.values()]
+        active = any(
+            s and s.state not in {"COMPLETE", "CANCELLED", "ERROR", "IDLE"} for s in sessions
+        )
         return {
             "service": "ok",
             "version": __version__,
             "mode": "mock" if settings.mock else "moonraker",
             "printer": snapshot,
             "wizard_state": wizard.session.state if wizard.session else WizardState.IDLE,
+            "integration_idle": snapshot.connected
+            and snapshot.state == "ready"
+            and snapshot.print_state not in {"printing", "paused"}
+            and not active
+            and not filament.locked,
         }
 
     @app.get("/api/printer")
     async def printer_status():
         return await printer.snapshot()
+
+    @app.get("/api/mainsail/integration")
+    async def mainsail_integration_status():
+        return await asyncio.to_thread(integration.status)
+
+    @app.get("/api/mainsail/entry")
+    async def mainsail_entry():
+        current = await asyncio.to_thread(integration.status)
+        if current["healthy"]:
+            return FileResponse(
+                settings.mainsail_dir / "index.html", headers={"Cache-Control": "no-store"}
+            )
+        return RedirectResponse("/api/klipper-tools/", status_code=307)
+
+    @app.post("/api/mainsail/repair")
+    async def repair_mainsail(request: Request):
+        _check_same_origin(request)
+        async with repair_lock:
+            current = await asyncio.to_thread(integration.status)
+            if not current["can_repair"]:
+                raise WizardError(
+                    "Repair unavailable", message_key="integration.errors.unavailable"
+                )
+            snapshot = await printer.snapshot()
+            sessions = [wizard.session, *calibrations.sessions.values()]
+            active = any(
+                s and s.state not in {"COMPLETE", "CANCELLED", "ERROR", "IDLE"} for s in sessions
+            )
+            if (
+                not snapshot.connected
+                or snapshot.state != "ready"
+                or snapshot.print_state in {"printing", "paused"}
+                or active
+                or filament.locked
+            ):
+                raise WizardError("Printer must be idle", message_key="integration.errors.busy")
+            try:
+                await asyncio.to_thread(integration.request_repair)
+            except OSError as exc:
+                raise WizardError(
+                    "Repair queue is not writable", message_key="integration.errors.write"
+                ) from exc
+            return {"status": "queued"}
 
     @app.post("/api/emergency-stop")
     async def emergency_stop(request: Request):
@@ -265,9 +325,12 @@ def create_app(
     @app.post("/api/wizards/{wizard_id}/start")
     async def calibration_start(wizard_id: str, payload: CalibrationStartRequest, request: Request):
         _check_same_origin(request)
-        if wizard_id == "xyz" and wizard.session and wizard.session.state not in {
-            WizardState.COMPLETE, WizardState.CANCELLED, WizardState.ERROR
-        }:
+        if (
+            wizard_id == "xyz"
+            and wizard.session
+            and wizard.session.state
+            not in {WizardState.COMPLETE, WizardState.CANCELLED, WizardState.ERROR}
+        ):
             raise WizardError("Active extruder calibration", message_key="xyz.errors.active")
         if filament.locked:
             raise WizardError(

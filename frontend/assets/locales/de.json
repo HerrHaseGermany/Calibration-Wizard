@@ -618,5 +618,14 @@
   "xyz.errors.homing": "Vor dem Test müssen alle Achsen referenziert sein.",
   "xyz.errors.kinematics": "Dieser Verfahrwegtest unterstützt derzeit Cartesian, CoreXY und CoreXZ.",
   "xyz.errors.active": "Beende die aktive Kalibrierung, bevor du einen weiteren Ablauf startest.",
-  "xyz.result.series": "Messreihe: {direction}{distance} mm"
+  "xyz.result.series": "Messreihe: {direction}{distance} mm",
+  "integration.missing": "Mainsail-Integration fehlt oder wurde verändert",
+  "integration.description": "Die Tools-Seite kann für diese Mainsail-Version wiederhergestellt werden. Dabei wird Mainsail neu gebaut. Öffne danach Mainsail erneut.",
+  "integration.building": "Die Mainsail-Integration wird vorbereitet. Das kann einige Minuten dauern.",
+  "integration.unsupported": "Für diese Mainsail-Version ist noch kein geprüfter Patch verfügbar. Nutze vorerst diese Standalone-Seite.",
+  "integration.setup": "Die Reparatur ist noch nicht eingerichtet. Führe den Installer auf dem Drucker erneut aus.",
+  "integration.repair": "Reparieren",
+  "integration.errors.unavailable": "Eine Reparatur ist derzeit nicht verfügbar. Prüfe Version und Installationsstatus.",
+  "integration.errors.busy": "Beende Druck, Kalibrierung oder Filamentbewegung vor der Reparatur.",
+  "integration.errors.write": "Die Repair-Anfrage konnte nicht gespeichert werden. Prüfe Installation und Verzeichnisrechte."
 }

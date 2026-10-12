@@ -16,7 +16,7 @@ The service controls a heater and motor. Treat it like the printer UI itself.
 - The configuration writer stays inside the resolved Klipper config root, rejects ambiguous definitions, backs up first, and atomically replaces the file.
 - Geometry setup validates finite coordinate bounds and point counts, shows the exact normalized
   section diff, and rejects saving if any included config file changed after that preview.
-- Systemd hardening denies new privileges and makes the system read-only except for the Klipper configuration and backup directories.
+- The Wizard service cannot gain privileges and can write only its configuration/backup directories. The separate unprivileged Mainsail build worker can additionally write the configured frontend and its own build state. Browser repair requests queue only a fixed request file; no command or path is accepted from the browser.
 
 Do not expose port 7130 directly to an untrusted network. The initial release relies on the same network trust boundary as a typical local Mainsail installation; it does not yet implement an independent user database. Deployments exposed through the internet must put authenticated TLS access in front of both Mainsail and this application.
 
