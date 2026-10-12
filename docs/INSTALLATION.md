@@ -101,6 +101,20 @@ compatibility notice with the standalone fallback. A new version becomes repaira
 after its patch is checked and added to the tool. Build failures are displayed in the UI;
 logs are available with `journalctl -u klipper-tools-mainsail-repair -n 100 --no-pager`.
 
+Integration revisions 7 and 8 are compatible: revision 8 only adds optional iframe width
+synchronization. An intact revision 7 installation needs no rebuild and keeps the native
+Tools route. Unsupported integration revisions show an update notice. Running builds
+are detected by the worker's OS lock, rather than by an old `building` record. A queued
+request has a one-minute startup grace period. If the worker stops before writing its
+final status, the UI reports an interrupted build and enables Repair again. The previously
+deployed frontend remains available until the new build is deployed.
+
+The build service runs at low priority, is limited to one CPU core's worth of time and
+half of physical RAM, and cannot use swap on cgroup-v2 hosts. If the build exceeds its
+memory limit, it is stopped rather than taking the printer host's remaining memory.
+These limits require the kernel's cgroup controllers. Rerun the installer to apply changed
+service settings; updating the Python package alone does not replace the installed unit.
+
 If Repair reports **Repair queue is not writable**, update the checkout and rerun
 `./install.sh` to install the service's write permission for the Mainsail state directory.
 A package update or service restart does not replace the installed systemd unit. To start

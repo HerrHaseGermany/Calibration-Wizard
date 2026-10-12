@@ -158,6 +158,19 @@ def restore(target: Path, backup: Path) -> None:
             destination.unlink(missing_ok=True)
 
 
+def acquire_worker_lock(lock) -> None:
+    # Status checks briefly take a shared lock. Let such a probe finish, while
+    # still refusing a second worker instead of waiting for an entire build.
+    for attempt in range(5):
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
@@ -167,7 +180,7 @@ def main() -> None:
     args = parser.parse_args()
     args.state.mkdir(parents=True, exist_ok=True)
     with (args.state / "worker.lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        acquire_worker_lock(lock)
         if args.restore:
             previous = read_json(args.state / "last-backup.json")
             # An upstream update must never be rolled back by the uninstaller.

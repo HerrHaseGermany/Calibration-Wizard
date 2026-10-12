@@ -174,6 +174,10 @@ def create_app(
                 raise WizardError("Printer must be idle", message_key="integration.errors.busy")
             try:
                 await asyncio.to_thread(integration.request_repair)
+            except ValueError as exc:
+                raise WizardError(
+                    "Repair already queued or running", message_key="integration.errors.unavailable"
+                ) from exc
             except OSError as exc:
                 raise WizardError(
                     "Repair queue is not writable", message_key="integration.errors.write"

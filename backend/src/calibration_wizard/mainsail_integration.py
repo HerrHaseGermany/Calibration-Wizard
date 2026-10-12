@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -10,8 +11,12 @@ import time
 from pathlib import Path
 
 REVISION = 8
+# Revision 8 only adds optional iframe width synchronization. Revision 7 has
+# the same route, appearance bridge and navigation guards and remains usable.
+COMPATIBLE_REVISIONS = {7, REVISION}
 SUPPORTED = {"v2.19.0": "5fb9e77fb9f4e60cf0725d9dc7f57cf7b84bbd70"}
 MANIFEST = ".kcw-tools.json"
+QUEUE_TIMEOUT = 60
 
 
 def migrate_state(source: Path, destination: Path) -> bool:
@@ -47,6 +52,19 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def worker_running(state_dir: Path) -> bool:
+    """Probe the worker's OS lock without creating or changing build state."""
+    try:
+        with (state_dir / "worker.lock").open("rb") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+    except OSError:
+        return False
+    return False
+
+
 class MainsailIntegration:
     def __init__(self, root: Path | None, state_dir: Path, enabled: bool = False):
         self.root = root
@@ -57,12 +75,11 @@ class MainsailIntegration:
         version = read_json(self.root / "release_info.json").get("version") if self.root else None
         supported = isinstance(version, str) and version in SUPPORTED
         manifest = read_json(self.root / MANIFEST) if self.root else {}
-        healthy = bool(
-            supported
-            and manifest.get("version") == version
-            and manifest.get("revision") == REVISION
-            and manifest.get("files")
-        )
+        reason = "unsupported" if not supported else "missing"
+        matching_version = bool(supported and manifest.get("version") == version)
+        if matching_version and manifest.get("files"):
+            reason = "changed"
+        healthy = bool(matching_version and manifest.get("files"))
         if healthy:
             try:
                 for name, expected in manifest["files"].items():
@@ -72,32 +89,51 @@ class MainsailIntegration:
                         break
             except (OSError, TypeError, AttributeError):
                 healthy = False
+        revision = manifest.get("revision")
+        if healthy and (not isinstance(revision, int) or revision not in COMPATIBLE_REVISIONS):
+            reason = "outdated"
+            healthy = False
+        elif healthy:
+            reason = None
+        running = worker_running(self.state_dir)
         job = read_json(self.state_dir / "status.json")
         pending = (self.state_dir / "request").exists()
         try:
-            recent = time.time() - float(job.get("updated", 0)) < 3600
+            recent = 0 <= time.time() - float(job.get("updated", 0)) < QUEUE_TIMEOUT
         except (TypeError, ValueError):
             recent = False
-        busy = recent and (pending or job.get("state") == "building")
+        queued = pending and job.get("state") == "queued" and recent
+        busy = running or queued
+        job_state = job.get("state", "idle")
+        if running:
+            job_state = "building"
+        elif not queued and job_state in {"building", "queued"}:
+            # A killed worker cannot write its final status. Its lock is released
+            # by the OS, so a leftover JSON record must not keep Repair disabled.
+            job_state = "interrupted"
         return {
             "configured": self.root is not None,
             "healthy": healthy,
+            "reason": reason,
+            "revision": manifest.get("revision"),
+            "latest_revision": REVISION,
+            "compatible_revisions": sorted(COMPATIBLE_REVISIONS),
             "version": version,
             "supported": supported,
             "can_repair": self.enabled and supported and not healthy and not busy,
             "busy": busy,
-            "job": job.get("state", "idle"),
+            "job": job_state,
             "error": job.get("error"),
             "standalone_url": "/api/klipper-tools/",
         }
 
     def request_repair(self) -> None:
+        if self.status()["busy"]:
+            raise ValueError("Repair already queued or running")
         self.state_dir.mkdir(parents=True, exist_ok=True)
         request = self.state_dir / "request"
         if request.exists():
             # Only a stale job may be queued again; the worker also takes an OS lock.
-            if self.status()["busy"]:
-                raise ValueError("Repair already queued")
             request.unlink()
         write_json(self.state_dir / "status.json", {"state": "queued", "updated": time.time()})
         request.touch(exist_ok=False)

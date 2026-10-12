@@ -11,6 +11,15 @@ Environment="PATH=@BUILD_PATH@"
 Environment="NPM_CONFIG_CACHE=@MAINSAIL_STATE@/npm-cache"
 ExecStart="@PROJECT_DIR@/.venv/bin/python" -m calibration_wizard.mainsail_build --root "@MAINSAIL_DIR@" --state "@MAINSAIL_STATE@" --template "@PROJECT_DIR@/integrations/mainsail/Tools.vue"
 TimeoutStartSec=50min
+TimeoutStopSec=15s
+# Keep the build from exhausting the printer host's CPU and memory.
+Nice=15
+CPUQuota=100%
+MemoryAccounting=true
+MemoryMax=50%
+MemorySwapMax=0
+OOMScoreAdjust=500
+OOMPolicy=stop
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

@@ -7,10 +7,16 @@ export function mountIntegration({base, root, t, canRepair, apiError}) {
     if (!current?.configured || current.healthy) return;
     const title = document.createElement("strong");
     const copy = document.createElement("p");
-    title.textContent = t(current.busy ? "integration.building_title" : "integration.missing");
-    const key = current.busy ? "integration.building" : !current.supported ? "integration.unsupported" : !current.can_repair ? "integration.setup" : "integration.description";
+    const outdated = current.reason === "outdated";
+    title.textContent = t(current.busy ? "integration.building_title" : outdated ? "integration.outdated_title" : "integration.missing");
+    const key = current.busy ? "integration.building" : !current.supported ? "integration.unsupported" : !current.can_repair ? "integration.setup" : outdated ? "integration.outdated" : "integration.description";
     copy.textContent = t(key);
     root.append(title, copy);
+    if (current.job === "interrupted" && !current.busy) {
+      const detail = document.createElement("p");
+      detail.textContent = t("integration.interrupted");
+      root.append(detail);
+    }
     if (current.error && current.job === "failed") {
       const detail = document.createElement("p");
       detail.textContent = current.error;

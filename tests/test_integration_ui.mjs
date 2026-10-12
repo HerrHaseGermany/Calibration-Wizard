@@ -51,7 +51,15 @@ test("repair notice queues a fixed endpoint and displays build status", async ()
     assert.equal(root.classList.contains("building"), true);
     assert.equal(root.children.some(child => child.textContent === "integration.missing"), false);
     assert.equal(root.children.some(child => child.className === "button secondary"), false);
-    current = {...current, busy: false, supported: false};
+    current = {...current, busy: false, can_repair: true, reason: "outdated", job: "interrupted"};
+    await ui.refresh();
+    assert.equal(root.children[0].textContent, "integration.outdated_title");
+    assert.ok(root.children.some(child => child.textContent === "integration.outdated"));
+    assert.ok(root.children.some(child => child.textContent === "integration.interrupted"));
+    assert.equal(root.children.some(child => child.textContent === "integration.building"), false);
+    assert.equal(root.children.find(child => child.className === "button secondary").disabled, false);
+    assert.equal(root.classList.contains("building"), false);
+    current = {...current, supported: false, can_repair: false, reason: "unsupported"};
     await ui.refresh();
     assert.ok(root.children.some(child => child.textContent === "integration.unsupported"));
     assert.equal(root.classList.contains("building"), false);

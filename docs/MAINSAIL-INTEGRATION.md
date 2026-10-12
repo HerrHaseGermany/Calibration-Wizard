@@ -23,6 +23,11 @@ or changed files show the Repair notice on the standalone page. For supported ve
 the button queues a fixed request file; a systemd path starts the unprivileged worker.
 No browser-supplied command, path, version, or service name reaches the worker.
 
+Integration revisions 7 and 8 are both accepted for this release. Revision 8 adds optional
+iframe width synchronization without changing navigation guards or the appearance bridge.
+An intact revision 7 installation keeps working without rebuilding Mainsail. A leftover
+build status is not treated as a running worker; activity is checked using its OS lock.
+
 Repairs check printer readiness, print state, calibration sessions and filament movement.
 The worker repeats the checks after building. Files are backed up and copied with atomic
 file replacement; assets precede entry files. A failed deployment restores the backup.
