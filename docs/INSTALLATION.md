@@ -101,6 +101,12 @@ compatibility notice with the standalone fallback. A new version becomes repaira
 after its patch is checked and added to the tool. Build failures are displayed in the UI;
 logs are available with `journalctl -u klipper-tools-mainsail-repair -n 100 --no-pager`.
 
+If Repair reports **Repair queue is not writable**, update the checkout and rerun
+`./install.sh` to install the service's write permission for the Mainsail state directory.
+A package update or service restart does not replace the installed systemd unit. To start
+the existing repair worker directly while the printer is idle, run
+`sudo systemctl start --no-block klipper-tools-mainsail-repair.service`.
+
 After a successful build, reload Mainsail. The patch excludes `/tools/` navigation from its
 service worker fallback so the independent UI stays reachable. An older already-running
 service worker may require closing/reopening Mainsail or a browser reload before it updates.

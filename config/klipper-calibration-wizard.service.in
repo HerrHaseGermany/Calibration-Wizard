@@ -16,7 +16,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=@CONFIG_DIR@ @BACKUP_DIR@
+ReadWritePaths=@CONFIG_DIR@ @BACKUP_DIR@ -@MAINSAIL_STATE@
 
 [Install]
 WantedBy=multi-user.target
