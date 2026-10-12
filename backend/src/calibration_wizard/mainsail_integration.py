@@ -9,9 +9,30 @@ import tempfile
 import time
 from pathlib import Path
 
-REVISION = 2
+REVISION = 7
 SUPPORTED = {"v2.19.0": "5fb9e77fb9f4e60cf0725d9dc7f57cf7b84bbd70"}
 MANIFEST = ".kcw-tools.json"
+
+
+def migrate_state(source: Path, destination: Path) -> bool:
+    """Move legacy build state out of config while retaining the original backup."""
+    if source.resolve() == destination.resolve() or not source.exists():
+        return False
+    if source.is_symlink() or destination.exists() or destination.is_symlink():
+        raise ValueError("Cannot migrate Mainsail state over an existing directory or symlink")
+    previous = read_json(source / "last-backup.json")
+    backup = Path(previous["path"]) if previous.get("path") else None
+    if backup and backup.is_relative_to(source):
+        previous["path"] = str(destination / backup.relative_to(source))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    source.rename(destination)
+    try:
+        if previous:
+            write_json(destination / "last-backup.json", previous)
+    except Exception:
+        destination.rename(source)
+        raise
+    return True
 
 
 def read_json(path: Path) -> dict:

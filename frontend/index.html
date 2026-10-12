@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b1017" />
+    <meta name="theme-color" content="#121212" />
     <title>Klipper Tools</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=20260929-6" />
     <script>document.documentElement.classList.toggle("embedded",window.self!==window.top);document.documentElement.dataset.theme=(localStorage.getItem("kcw-theme-mode")||"system")==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):localStorage.getItem("kcw-theme-mode");</script>
-    <link rel="stylesheet" href="assets/app.css?v=20261012-2" />
+    <link rel="stylesheet" href="assets/app.css?v=20261012-9" />
   </head>
   <body>
     <div class="shell">
@@ -38,7 +38,6 @@
         </aside>
 
         <section class="workspace">
-          <div id="embedded-actions" class="embedded-actions" hidden></div>
           <div id="status-strip" class="status-strip hidden">
             <div><span id="status-label-1"><span data-i18n="ui.hotend"></span></span><strong id="temperature"><span data-i18n="ui.c_2"></span></strong></div>
             <div><span id="status-label-2"><span data-i18n="ui.target"></span></span><strong id="target"><span data-i18n="ui.c_2"></span></strong></div>
@@ -46,10 +45,16 @@
           </div>
           <aside id="integration-banner" class="notice hidden" role="status"></aside>
           <div id="notice" class="notice hidden" role="alert"></div>
-          <article id="panel" class="panel" aria-live="polite"></article>
+          <article class="panel">
+            <div class="panel-toolbar">
+              <div class="panel-heading"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z"/></svg><span data-i18n="ui.tools"></span></div>
+              <div id="embedded-actions" class="embedded-actions" hidden></div>
+            </div>
+            <div id="panel" class="panel-content" aria-live="polite"></div>
+          </article>
         </section>
       </main>
     </div>
-    <script type="module" src="assets/app.js?v=20261012-2"></script>
+    <script type="module" src="assets/app.js?v=20261012-9"></script>
   </body>
 </html>

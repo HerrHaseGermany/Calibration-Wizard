@@ -48,7 +48,8 @@ ASVC_FILE="${DATA_DIR}/moonraker.asvc"
 NGINX_SITE="${KCW_NGINX_SITE:-/etc/nginx/sites-available/mainsail}"
 MAINSAIL_NAVI="${KCW_MAINSAIL_NAVI:-${CONFIG_DIR}/.theme/navi.json}"
 MAINSAIL_DIR="${KCW_MAINSAIL_DIR:-${TARGET_HOME}/mainsail}"
-MAINSAIL_STATE="${KCW_MAINSAIL_STATE_DIR:-${ENV_DIR}/mainsail}"
+MAINSAIL_STATE="${KCW_MAINSAIL_STATE_DIR:-${DATA_DIR}/.klipper-tools-mainsail}"
+LEGACY_MAINSAIL_STATE="${ENV_DIR}/mainsail"
 BUILD_PATH="${KCW_BUILD_PATH:-${PATH}}"
 
 log() { printf '[calibration-wizard] %s\n' "$*"; }
@@ -128,6 +129,17 @@ if [[ -f "${MAINSAIL_NAVI}" ]]; then
 fi
 
 if [[ -f "${MAINSAIL_DIR}/release_info.json" ]]; then
+  if [[ "${MAINSAIL_STATE}" != "${LEGACY_MAINSAIL_STATE}" && -d "${LEGACY_MAINSAIL_STATE}" ]]; then
+    systemctl is-active --quiet klipper-tools-mainsail-repair.service && fail "Wait for the active Mainsail build before reinstalling"
+    sudo systemctl stop klipper-tools-mainsail-repair.path
+    log "Moving Mainsail cache and backups outside Moonraker's config root"
+    "${PROJECT_DIR}/.venv/bin/python" - "${LEGACY_MAINSAIL_STATE}" "${MAINSAIL_STATE}" <<'PY'
+from pathlib import Path
+import sys
+from calibration_wizard.mainsail_integration import migrate_state
+migrate_state(Path(sys.argv[1]), Path(sys.argv[2]))
+PY
+  fi
   install -d -m 0750 -o "${TARGET_USER}" -g "${TARGET_GROUP}" "${MAINSAIL_STATE}"
   # Preserve credentials and other user settings; replace only our integration keys.
   python3 - "${ENV_FILE}" "${MAINSAIL_DIR}" "${MAINSAIL_STATE}" <<'PY'

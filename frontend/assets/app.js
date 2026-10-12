@@ -33,6 +33,7 @@ let uiStep = 0;
 let activeWizard = null;
 let isOverview = true;
 let isConfigurationOverview = false;
+let isConfigurationPage = false;
 let resumeMode = false;
 let bootstrapping = true;
 const resumeStorageKey = "kcw-active-calibration";
@@ -51,9 +52,18 @@ const integrationUi = mountIntegration({
   canRepair: () => printerIsReady() && !bootstrapping && !activeWizard && !["printing", "paused"].includes(printer?.print_state) && !integrationNavigationLocked(),
 });
 // Mainsail's route guard accepts messages only from this iframe and this origin.
-if (embedded) setInterval(() => {
-  window.parent.postMessage({type: "kcw-navigation-state", locked: integrationNavigationLocked()}, window.location.origin);
-}, 250);
+if (embedded) {
+  const main = document.querySelector("main");
+  const sendFrameState = () => {
+    const dialog = document.querySelector("dialog[open]");
+    const height = Math.ceil(Math.max(main.getBoundingClientRect().height + 4, dialog ? dialog.scrollHeight + 32 : 0));
+    window.parent.postMessage({type: "kcw-navigation-state", locked: integrationNavigationLocked(), height}, window.location.origin);
+  };
+  // Report layout changes immediately, before the next paint, instead of waiting for polling.
+  const resizeObserver = new ResizeObserver(sendFrameState);
+  resizeObserver.observe(main);
+  setInterval(sendFrameState, 250);
+}
 window.addEventListener("beforeunload", event => {
   if (integrationNavigationLocked()) { event.preventDefault(); event.returnValue = ""; }
 });
@@ -96,6 +106,7 @@ function printerReadinessNotice() {
 
 function setOverviewState(current) {
   isConfigurationOverview = false;
+  isConfigurationPage = false;
   isOverview = current;
   homeButton.disabled = current || navigationLocked;
   if (current) homeButton.setAttribute("aria-current", "page");
@@ -120,7 +131,7 @@ function applyThemeMode(mode, persist=true) {
   const theme = mode === "system" ? (systemTheme.matches ? "light" : "dark") : mode;
   document.documentElement.dataset.theme = theme;
   if (persist) localStorage.setItem("kcw-theme-mode",mode);
-  document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#0b1017" : "#f3f6f9";
+  document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#121212" : "#ffffff";
   setText(document.querySelector("#theme-icon"), () => mode === "system" ? "◐" : mode === "dark" ? "☾" : "☀");
   const title = () => t(`ui.color_scheme_${mode === "system" ? "system" : mode === "light" ? "light" : "dark"}`);
   setTranslatedAttribute(themeButton, "title", title);
@@ -131,8 +142,23 @@ applyThemeMode(themeMode,false);
 themeButton.addEventListener("click",()=>{const modes=["system","light","dark"]; applyThemeMode(modes[(modes.indexOf(themeMode)+1)%modes.length]);});
 systemTheme.addEventListener("change",()=>{if(themeMode === "system")applyThemeMode("system",false);});
 if (embedded) window.addEventListener("message", event => {
-  if (event.origin !== window.location.origin || event.source !== window.parent || event.data?.type !== "kcw-appearance") return;
+  if (event.origin !== window.location.origin || event.source !== window.parent) return;
+  if (event.data?.type === "kcw-viewport") {
+    const {top, height} = event.data;
+    if (Number.isFinite(top) && Number.isFinite(height) && top >= 0 && height >= 0 && top <= 100000 && height <= 100000) {
+      document.documentElement.style.setProperty("--host-visible-top", `${top}px`);
+      document.documentElement.style.setProperty("--host-visible-height", `${height}px`);
+    }
+    return;
+  }
+  if (event.data?.type !== "kcw-appearance") return;
   if (["dark", "light"].includes(event.data.theme)) applyThemeMode(event.data.theme, false);
+  for (const [key, variable] of Object.entries({primary:"--accent", primaryText:"--accent-text", warning:"--warning"})) {
+    const color = event.data.colors?.[key];
+    if (typeof color === "string" && /^#(?:[\da-f]{3}|[\da-f]{6}|[\da-f]{8})$/i.test(color)) {
+      document.documentElement.style.setProperty(variable, color);
+    }
+  }
   const locale = String(event.data.language || "").toLowerCase().split(/[-_]/)[0];
   if (["de", "en"].includes(locale)) {
     setLocale(locale, false);
@@ -201,8 +227,7 @@ function dashboard() {
   }).join("");
   const unavailable=wizards.filter(wizard=>!wizard.available && wizard.category !== "helper");
   const unavailableCards=unavailable.length ? `<section class="calibration-phase unavailable-phase"><div class="phase-heading"><h3>${msg("ui.unavailable")}</h3></div><div class="calibration-grid">${unavailable.map(card).join("")}</div></section>` : "";
-  panel.innerHTML = `<h1>${msg("ui.tools")}</h1>
-    ${printerReadinessNotice()}
+  panel.innerHTML = `${printerReadinessNotice()}
     <div class="tool-groups">
       <section class="tool-group">
         <div class="calibration-grid">
@@ -230,6 +255,7 @@ function dashboard() {
 function configurationOverview() {
   setOverviewState(false);
   isConfigurationOverview = true;
+  isConfigurationPage = true;
   activeWizard = null;
   session = null;
   clearError();
@@ -248,6 +274,7 @@ function configurationOverview() {
       }
     });
   });
+  updateNavigationAvailability();
 }
 
 function filamentPage() {
@@ -273,7 +300,11 @@ async function returnHome() {
 }
 
 function updateNavigationAvailability() {
-  configurationButton.disabled = navigationLocked || !printerIsReady() || ["printing", "paused"].includes(printer?.print_state);
+  configurationButton.disabled = navigationLocked || (!isConfigurationPage && (!printerIsReady() || ["printing", "paused"].includes(printer?.print_state)));
+  const label = () => t(isConfigurationPage ? "navigation.overview" : "configuration.title");
+  setTranslatedAttribute(configurationButton, "title", label);
+  setTranslatedAttribute(configurationButton, "aria-label", label);
+  configurationButton.setAttribute("aria-pressed", String(isConfigurationPage));
 }
 
 function setNavigationLocked(locked) {
@@ -285,8 +316,9 @@ function setNavigationLocked(locked) {
 
 configurationButton.addEventListener("click", async () => {
   if (configurationButton.disabled) return;
+  const returnToOverview = isConfigurationPage;
   configurationButton.disabled = true;
-  try { await returnHome(); configurationOverview(); }
+  try { await returnHome(); if (!returnToOverview) configurationOverview(); }
   catch(error) { showError(error); }
   finally { updateNavigationAvailability(); }
 });
@@ -317,8 +349,23 @@ emergencyButton.addEventListener("click", async () => {
 });
 
 function cardIcon(id) {
-  if (id === "xyz") return "XYZ";
-  return ({filament:"↕", extruder:"E", pid:"°", flow:"%", pressure_advance:"PA", probe_offset:"Z", screws_tilt:"↻", bed_screws:"⌁", z_tilt:"Z²", quad_gantry_level:"Q", bed_mesh:"▦", input_shaper:"≈"})[id] || "+";
+  // Material Design icons, shared with Mainsail (@mdi/js).
+  const paths = {
+    filament: "M7,2H17V8H19V13H16.5L13,17H11L7.5,13H5V8H7V2M10,22H2V20H10A1,1 0 0,0 11,19V18H13V19A3,3 0 0,1 10,22Z",
+    extruder: "M13,9V15H16L12,19L8,15H11V9H8L12,5L16,9H13M4,2H20V4H4V2M4,20H20V22H4V20Z",
+    pid: "M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 13 5V8H11V5A1 1 0 0 1 12 4Z",
+    flow: "M12,3.25C12,3.25 6,10 6,14C6,17.32 8.69,20 12,20A6,6 0 0,0 18,14C18,10 12,3.25 12,3.25M14.47,9.97L15.53,11.03L9.53,17.03L8.47,15.97M9.75,10A1.25,1.25 0 0,1 11,11.25A1.25,1.25 0 0,1 9.75,12.5A1.25,1.25 0 0,1 8.5,11.25A1.25,1.25 0 0,1 9.75,10M14.25,14.5A1.25,1.25 0 0,1 15.5,15.75A1.25,1.25 0 0,1 14.25,17A1.25,1.25 0 0,1 13,15.75A1.25,1.25 0 0,1 14.25,14.5Z",
+    pressure_advance: "M4 19V20H22V22H2V2H4V17C7 17 10 15 12.1 11.4C15.1 6.4 18.4 4 22 4V6C19.2 6 16.5 8.1 13.9 12.5C11.3 16.6 7.7 19 4 19Z",
+    probe_offset: "M4,12H20V14H4V12M4,9H20V11H4V9M16,4L12,8L8,4H11V1H13V4H16M8,19L12,15L16,19H13V22H11V19H8Z",
+    screws_tilt: "M13.5,17V19L12,22L10.5,19L13.5,17M14.5,6.3L13.5,7V6H10.5V9L9.5,9.7V10.7L14.5,7.4V6.3M14.5,10.3L13.5,11V9L10.5,11V13L9.5,13.7V14.7L14.5,11.4V10.3M14.5,14.3L13.5,15V13L10.5,15V17L9.5,17.7V18.7L14.5,15.4V14.3M8,2C8,2 7,2 7,3L10,5H14L17,3C17,3 17,2 16,2C15,2 8,2 8,2Z",
+    bed_screws: "M18,1.83C17.5,1.83 17,2 16.59,2.41C13.72,5.28 8,11 8,11L9.5,12.5L6,16H4L2,20L4,22L8,20V18L11.5,14.5L13,16C13,16 18.72,10.28 21.59,7.41C22.21,6.5 22.37,5.37 21.59,4.59L19.41,2.41C19,2 18.5,1.83 18,1.83M18,4L20,6L13,13L11,11L18,4Z",
+    z_tilt: "M12,2L16,6H13V13.82L22.39,19.25L21.39,21L12,15.56L2.61,21L1.61,19.25L11,13.82V6H8L12,2Z",
+    quad_gantry_level: "M12,2L16,6H13V13.85L19.53,17.61L21,15.03L22.5,20.5L17,21.96L18.53,19.35L12,15.58L5.47,19.35L7,21.96L1.5,20.5L3,15.03L4.47,17.61L11,13.85V6H8L12,2Z",
+    bed_mesh: "M10,4V8H14V4H10M16,4V8H20V4H16M16,10V14H20V10H16M16,16V20H20V16H16M14,20V16H10V20H14M8,20V16H4V20H8M8,14V10H4V14H8M8,8V4H4V8H8M10,14H14V10H10V14M4,2H20A2,2 0 0,1 22,4V20A2,2 0 0,1 20,22H4C2.92,22 2,21.1 2,20V4A2,2 0 0,1 4,2Z",
+    input_shaper: "M16,19H8V5H16M16.5,3H7.5A1.5,1.5 0 0,0 6,4.5V19.5A1.5,1.5 0 0,0 7.5,21H16.5A1.5,1.5 0 0,0 18,19.5V4.5A1.5,1.5 0 0,0 16.5,3M19,17H21V7H19M22,9V15H24V9M3,17H5V7H3M0,15H2V9H0V15Z",
+    xyz: "M12,2L16,6H13V13.85L19.53,17.61L21,15.03L22.5,20.5L17,21.96L18.53,19.35L12,15.58L5.47,19.35L7,21.96L1.5,20.5L3,15.03L4.47,17.61L11,13.85V6H8L12,2Z"
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[id] || paths.filament}"/></svg>`;
 }
 
 function showError(message) {
@@ -574,6 +621,8 @@ function gantryRun(id) {
 
 async function openSetup(id) {
   setOverviewState(false);
+  isConfigurationPage = true;
+  updateNavigationAvailability();
   emergencyButton.classList.add("hidden");
   activeWizard = null; rail.classList.add("hidden"); workspace.classList.add("menu-mode"); statusStrip.classList.add("hidden"); clearError();
   const response = await fetch(new URL(`setup/${id}`,base)); const setup = await response.json();

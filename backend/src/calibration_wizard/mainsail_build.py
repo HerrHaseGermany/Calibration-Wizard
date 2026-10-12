@@ -54,7 +54,7 @@ def patch_source(source: Path, template: Path) -> None:
         app,
         "<router-view />",
         """<router-view v-if="$route.name !== 'tools'" />
-                    <tools-page v-if="toolsVisited" v-show="$route.name === 'tools'" />""",
+                    <tools-page v-show="$route.name === 'tools'" />""",
     )
     replace_once(
         app,
@@ -62,18 +62,6 @@ def patch_source(source: Path, template: Path) -> None:
         "import ToolsPage from '@/pages/Tools.vue'\nimport Component from 'vue-class-component'",
     )
     replace_once(app, "    components: {", "    components: {\n        ToolsPage,")
-    replace_once(
-        app,
-        "    get title(): string {",
-        """    toolsVisited = false
-
-    @Watch('$route', { immediate: true })
-    onToolsRoute() {
-        if (this.$route.name === 'tools') this.toolsVisited = true
-    }
-
-    get title(): string {""",
-    )
     for locale in (source / "src/locales").glob("*.json"):
         values = read_json(locale)
         if "Router" in values:

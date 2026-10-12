@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from calibration_wizard.api import create_app
 from calibration_wizard.mainsail_build import deploy, patch_source, restore
-from calibration_wizard.mainsail_integration import MANIFEST, MainsailIntegration
+from calibration_wizard.mainsail_integration import MANIFEST, MainsailIntegration, migrate_state
 from calibration_wizard.printer import MockPrinter
 from calibration_wizard.settings import Settings
 from fastapi.testclient import TestClient
@@ -54,6 +54,29 @@ def test_unsupported_version_cannot_be_repaired(tmp_path):
     current = MainsailIntegration(target, state, True).status()
     assert not current["supported"]
     assert not current["can_repair"]
+
+
+def test_state_migration_preserves_original_backup_and_restore(tmp_path):
+    target, state, build = fixture(tmp_path)
+    deploy(build, target, state, "v2.19.0")
+    destination = tmp_path / "outside-config" / "state"
+    assert migrate_state(state, destination)
+    assert not state.exists()
+    assert MainsailIntegration(target, destination, True).status()["healthy"]
+    backup = Path(json.loads((destination / "last-backup.json").read_text())["path"])
+    assert backup.is_relative_to(destination)
+    restore(target, backup)
+    assert (target / "index.html").read_text() == "original"
+    assert not migrate_state(state, destination)
+
+
+def test_state_migration_refuses_to_overwrite_existing_state(tmp_path):
+    _, state, _ = fixture(tmp_path)
+    destination = tmp_path / "existing"
+    destination.mkdir()
+    with pytest.raises(ValueError, match="existing"):
+        migrate_state(state, destination)
+    assert state.exists()
 
 
 def test_restore_retains_original_across_repeated_repairs(tmp_path):

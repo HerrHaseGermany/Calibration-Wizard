@@ -13,7 +13,7 @@ cd Calibration-Wizard
 
 Run the installer from the Git checkout. Archive downloads are intentionally rejected because Moonraker can only update a real, branch-based Git repository. The script detects the checkout's `origin` and active branch, checks prerequisites, creates `.venv`, installs the Python package, installs and enables a hardened systemd unit, authorizes Moonraker to restart the service, adds a validated nginx `/tools/` route when the standard Mainsail site is found, and installs a dedicated Mainsail build/repair service. The old direct Tools sidebar link is removed; unrelated custom navigation entries are preserved and backed up before a change. The extension adds a native Tools route and builds in the background. Update-manager configuration is manual; the installer neither creates a separate update-manager file nor changes `moonraker.conf`.
 
-Override nonstandard layouts with `KCW_DATA_DIR`, `KCW_CONFIG_DIR`, `KCW_MOONRAKER_CONFIG`, `KCW_KLIPPER_CONFIG`, `KCW_NGINX_SITE`, `KCW_MAINSAIL_NAVI`, `KCW_MAINSAIL_DIR` (default `~/mainsail`), `KCW_MAINSAIL_STATE_DIR`, or `KCW_BUILD_PATH` (Node/npm executable search path).
+Override nonstandard layouts with `KCW_DATA_DIR`, `KCW_CONFIG_DIR`, `KCW_MOONRAKER_CONFIG`, `KCW_KLIPPER_CONFIG`, `KCW_NGINX_SITE`, `KCW_MAINSAIL_NAVI`, `KCW_MAINSAIL_DIR` (default `~/mainsail`), `KCW_MAINSAIL_STATE_DIR` (default `~/printer_data/.klipper-tools-mainsail`, outside the watched config root), or `KCW_BUILD_PATH` (Node/npm executable search path).
 
 Run `./install.sh --check` for a non-mutating preflight of interpreter and repository assets. It works on a development machine without Klipper; the actual installation remains Linux-only.
 

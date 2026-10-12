@@ -9,7 +9,10 @@ ASVC_FILE="${DATA_DIR}/moonraker.asvc"
 NGINX_SITE="${KCW_NGINX_SITE:-/etc/nginx/sites-available/mainsail}"
 MAINSAIL_NAVI="${KCW_MAINSAIL_NAVI:-${CONFIG_DIR}/.theme/navi.json}"
 MAINSAIL_DIR="${KCW_MAINSAIL_DIR:-${TARGET_HOME}/mainsail}"
-MAINSAIL_STATE="${KCW_MAINSAIL_STATE_DIR:-${CONFIG_DIR}/.klipper-calibration-wizard/mainsail}"
+MAINSAIL_STATE="${KCW_MAINSAIL_STATE_DIR:-${DATA_DIR}/.klipper-tools-mainsail}"
+if [[ -z "${KCW_MAINSAIL_STATE_DIR:-}" && ! -d "${MAINSAIL_STATE}" && -d "${CONFIG_DIR}/.klipper-calibration-wizard/mainsail" ]]; then
+  MAINSAIL_STATE="${CONFIG_DIR}/.klipper-calibration-wizard/mainsail"
+fi
 
 sudo systemctl disable --now klipper-tools-mainsail-repair.path 2>/dev/null || true
 sudo systemctl stop klipper-tools-mainsail-repair.service 2>/dev/null || true

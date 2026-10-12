@@ -4,6 +4,12 @@ The implementation adds a native **Tools** route and navigation entry to Mainsai
 The route embeds our application at `/tools/app/` while keeping the real sidebar and topbar.
 `/api/klipper-tools/` stays reachable for integrity checks and repair. No webcam entry is used.
 
+The iframe preloads after Mainsail connects and remains mounted when switching tabs.
+The embedded layout uses Mainsail's Roboto fonts, compact card toolbars and Material
+Design icons. Status and configuration stay inside the Tools card. Same-origin messages
+keep language, light/dark mode, primary color and primary button text color in sync;
+standalone preferences are preserved. Layouts adapt to narrow screens.
+
 The checked upstream commit is `5fb9e77fb9f4e60cf0725d9dc7f57cf7b84bbd70`. The worker
 clones that release and refuses a changed tag or an unknown version. The patch adds a page
 component, navigation/locale entries, and the service-worker navigation exclusion for
@@ -34,7 +40,8 @@ releases. Detection is automatic; deployment remains an explicit Repair action.
 - Backend tests cover overwrites, missing assets, unknown versions, retained printer config,
   backup restoration, changed versions during a build, symlink escape, same-origin checks,
   idle guards and duplicate repair requests.
-- The systemd/nginx installation has not been exercised on a real printer in this workspace.
+- The systemd build and deployment were exercised on the CB2 with Mainsail v2.19.0;
+  integrity checks and the `/tools/` and `/tools/app/` responses passed.
 
 ## Upstream references
 
