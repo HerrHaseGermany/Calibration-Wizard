@@ -105,6 +105,7 @@ function printerReadinessNotice() {
 }
 
 function setOverviewState(current) {
+  workspace.classList.remove("filament-mode");
   isConfigurationOverview = false;
   isConfigurationPage = false;
   isOverview = current;
@@ -211,7 +212,7 @@ function dashboard() {
     const blocked = !wizard.available ? "unavailable" : usable ? "" : "printer-blocked";
     const configured = wizard.configuration?.point_count ? `<span class="configured">${msg("ui.value_points_detected", {value0: wizard.configuration.point_count})}</span>` : "";
     const unavailable = !wizard.available ? `<span class="unavailable-reason">${wizard.availability_key ? msg(wizard.availability_key, wizard.availability_params) : msg("ui.not_available_on_this_printer")}</span><span class="planned">${msg("ui.not_configured")}</span>` : "";
-    return `<div class="calibration-card ${blocked}" ${interaction}>
+    return `<div class="calibration-card ${wizard.id === "filament" ? "filament-card" : ""} ${blocked}" ${interaction}>
       <span class="card-icon">${cardIcon(wizard.id)}</span><h3>${msg(wizard.name_key || `wizards.${wizard.id}.name`)}</h3><p>${msg(wizard.description_key || `wizards.${wizard.id}.description`)}</p>
       ${configured}${unavailable}</div>`;
   };
@@ -282,6 +283,7 @@ function filamentPage() {
   session = null;
   activeWizard = "filament";
   setOverviewState(false);
+  workspace.classList.add("filament-mode");
   rail.classList.add("hidden");
   emergencyButton.classList.remove("hidden");
   updateCalibrationStatusStrip();
