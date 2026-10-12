@@ -75,6 +75,15 @@ read_git_metadata
 [[ -f "${MOONRAKER_CONFIG}" ]] || fail "Moonraker config not found: ${MOONRAKER_CONFIG}"
 [[ -f "${KLIPPER_CONFIG}" ]] || fail "Klipper config not found: ${KLIPPER_CONFIG}"
 
+# Check build prerequisites before changing services or proxy configuration.
+if [[ -f "${MAINSAIL_DIR}/release_info.json" ]]; then
+  command -v node >/dev/null || fail "Node.js 20.19+ or 22.12+ is required to build the Mainsail extension"
+  command -v npm >/dev/null || fail "npm is required to build the Mainsail extension"
+  command -v zip >/dev/null || fail "zip is required to package the Mainsail frontend"
+  node -e 'const [major,minor]=process.versions.node.split(".").map(Number); if(!((major===20 && minor>=19)||(major===22 && minor>=12)||major>22))process.exit(1)' || fail "Node.js must be 20.19+ (20.x), 22.12+ (22.x), or newer"
+  sudo -u "${TARGET_USER}" test -w "${MAINSAIL_DIR}" || fail "Mainsail directory must be writable by ${TARGET_USER}: ${MAINSAIL_DIR}"
+fi
+
 log "Creating Python virtual environment"
 python3 -m venv "${PROJECT_DIR}/.venv"
 "${PROJECT_DIR}/.venv/bin/python" -m pip install --upgrade pip
@@ -119,11 +128,6 @@ if [[ -f "${MAINSAIL_NAVI}" ]]; then
 fi
 
 if [[ -f "${MAINSAIL_DIR}/release_info.json" ]]; then
-  command -v node >/dev/null || fail "Node.js 20.19+ or 22.12+ is required to build the Mainsail extension"
-  command -v npm >/dev/null || fail "npm is required to build the Mainsail extension"
-  command -v zip >/dev/null || fail "zip is required to package the Mainsail frontend"
-  node -e 'const [major,minor]=process.versions.node.split(".").map(Number); if(!((major===20 && minor>=19)||(major===22 && minor>=12)||major>22))process.exit(1)' || fail "Node.js must be 20.19+ (20.x), 22.12+ (22.x), or newer"
-  sudo -u "${TARGET_USER}" test -w "${MAINSAIL_DIR}" || fail "Mainsail directory must be writable by ${TARGET_USER}: ${MAINSAIL_DIR}"
   install -d -m 0750 -o "${TARGET_USER}" -g "${TARGET_GROUP}" "${MAINSAIL_STATE}"
   # Preserve credentials and other user settings; replace only our integration keys.
   python3 - "${ENV_FILE}" "${MAINSAIL_DIR}" "${MAINSAIL_STATE}" <<'PY'
@@ -162,7 +166,21 @@ for _attempt in {1..20}; do
 done
 [[ "${healthy}" == true ]] || fail "Service health check failed; inspect journalctl -u ${SERVICE_NAME}"
 if [[ -f "${MAINSAIL_DIR}/release_info.json" ]]; then
-  sudo systemctl start --no-block klipper-tools-mainsail-repair.service
+  # Moonraker's HTTP server can respond before Klipper reconnects after restart.
+  integration_ready=false
+  for _attempt in {1..60}; do
+    if curl --fail --silent "http://127.0.0.1:7130/api/status" | \
+      "${PROJECT_DIR}/.venv/bin/python" -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("integration_idle") else 1)' 2>/dev/null; then
+      integration_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${integration_ready}" == true ]]; then
+    sudo systemctl start --no-block klipper-tools-mainsail-repair.service
+  else
+    log "Mainsail build deferred: wait for Klipper and active Tools actions, then use Repair in /api/klipper-tools/."
+  fi
 fi
 log "Installation complete: open http://printer/tools/; independent Repair UI: http://printer/api/klipper-tools/"
 log "The Mainsail extension builds in the background; its status and Repair action are shown in the standalone UI."

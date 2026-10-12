@@ -19,7 +19,7 @@ def test_nginx_migration_is_idempotent_and_removable(tmp_path):
     assert "location = /tools/" in installed
     assert "location /tools/app/" in installed
     assert "location /tools/standalone/" in installed
-    assert "location /api/klipper-tools/" in installed
+    assert "location ^~ /api/klipper-tools/" in installed
     assert "return 301 /api/klipper-tools/$1$is_args$args;" in installed
     assert "proxy_pass http://127.0.0.1:7130/;" in installed
     assert subprocess.run(command, check=True, capture_output=True).stdout == b""
