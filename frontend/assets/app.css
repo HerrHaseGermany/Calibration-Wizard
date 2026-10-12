@@ -215,5 +215,9 @@ a { color: #ff9a6e; }
   .brand > span:last-child { display:none; }
 }
 
-.embedded #mainsail-button { display:none; }
+.embedded .topbar { display: none; }
+.embedded main { padding-top: 16px; }
+.embedded-actions { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-bottom: 16px; min-height: 36px; }
+.embedded-actions[hidden] { display: none; }
+.embedded-actions .connection span { display: inline; }
 #integration-banner p { margin:0.5rem 0; }

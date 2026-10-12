@@ -9,7 +9,7 @@ import tempfile
 import time
 from pathlib import Path
 
-REVISION = 1
+REVISION = 2
 SUPPORTED = {"v2.19.0": "5fb9e77fb9f4e60cf0725d9dc7f57cf7b84bbd70"}
 MANIFEST = ".kcw-tools.json"
 

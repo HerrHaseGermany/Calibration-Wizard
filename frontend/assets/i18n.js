@@ -28,10 +28,10 @@ export function resolveLocale(value, languages = globalThis.navigator?.languages
   return "en";
 }
 
-export function setLocale(value) {
+export function setLocale(value, persist = true) {
   preference = ["system", "de", "en"].includes(value) ? value : "system";
   locale = resolveLocale(preference);
-  storage?.setItem("kcw-language", preference);
+  if (persist) storage?.setItem("kcw-language", preference);
   if (globalThis.document) document.documentElement.lang = locale;
 }
 

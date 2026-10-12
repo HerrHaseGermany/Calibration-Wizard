@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#0b1017" />
     <title>Klipper Tools</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=20260929-6" />
-    <script>document.documentElement.dataset.theme=(localStorage.getItem("kcw-theme-mode")||"system")==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):localStorage.getItem("kcw-theme-mode");</script>
-    <link rel="stylesheet" href="assets/app.css?v=20261012-1" />
+    <script>document.documentElement.classList.toggle("embedded",window.self!==window.top);document.documentElement.dataset.theme=(localStorage.getItem("kcw-theme-mode")||"system")==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):localStorage.getItem("kcw-theme-mode");</script>
+    <link rel="stylesheet" href="assets/app.css?v=20261012-2" />
   </head>
   <body>
     <div class="shell">
@@ -38,6 +38,7 @@
         </aside>
 
         <section class="workspace">
+          <div id="embedded-actions" class="embedded-actions" hidden></div>
           <div id="status-strip" class="status-strip hidden">
             <div><span id="status-label-1"><span data-i18n="ui.hotend"></span></span><strong id="temperature"><span data-i18n="ui.c_2"></span></strong></div>
             <div><span id="status-label-2"><span data-i18n="ui.target"></span></span><strong id="target"><span data-i18n="ui.c_2"></span></strong></div>
@@ -49,6 +50,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="assets/app.js?v=20261012-1"></script>
+    <script type="module" src="assets/app.js?v=20261012-2"></script>
   </body>
 </html>

@@ -42,10 +42,37 @@ def patch_source(source: Path, template: Path) -> None:
         "const routes: AppRoute[] = [",
         """const routes: AppRoute[] = [
     {
-        name: 'tools', title: 'Tools', path: '/tools/', icon: mdiWrench,
-        component: () => import('../pages/Tools.vue'), alwaysShow: true,
+        name: 'tools', title: 'Tools', path: '/tools/',
+        icon: 'M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13' +
+            'M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z',
+        component: null, alwaysShow: true,
         showInNavi: true, position: 45, fullscreen: true,
     },""",
+    )
+    app = source / "src/App.vue"
+    replace_once(
+        app,
+        "<router-view />",
+        """<router-view v-if="$route.name !== 'tools'" />
+                    <tools-page v-if="toolsVisited" v-show="$route.name === 'tools'" />""",
+    )
+    replace_once(
+        app,
+        "import Component from 'vue-class-component'",
+        "import ToolsPage from '@/pages/Tools.vue'\nimport Component from 'vue-class-component'",
+    )
+    replace_once(app, "    components: {", "    components: {\n        ToolsPage,")
+    replace_once(
+        app,
+        "    get title(): string {",
+        """    toolsVisited = false
+
+    @Watch('$route', { immediate: true })
+    onToolsRoute() {
+        if (this.$route.name === 'tools') this.toolsVisited = true
+    }
+
+    get title(): string {""",
     )
     for locale in (source / "src/locales").glob("*.json"):
         values = read_json(locale)
@@ -170,7 +197,9 @@ def main() -> None:
             if version not in SUPPORTED:
                 raise ValueError(f"Mainsail {version!r} has no checked integration patch")
             require_idle()
-            with tempfile.TemporaryDirectory(prefix="build-", dir=args.state) as temporary:
+            # Source checkouts contain symlinked directories. Keep them outside
+            # Moonraker's watched config root to avoid duplicate inotify watches.
+            with tempfile.TemporaryDirectory(prefix="kcw-mainsail-build-") as temporary:
                 source = Path(temporary)
                 subprocess.run(
                     [

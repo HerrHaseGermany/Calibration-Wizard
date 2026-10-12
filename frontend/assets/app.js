@@ -1,7 +1,7 @@
 import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261011-1";
 import { renderXyzPage } from "./wizards/xyz/frontend.mjs?v=20261011-1";
-import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261010-9";
-import { adjustment, positionMap } from "./positions.mjs?v=20261010-9";
+import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261012-2";
+import { adjustment, positionMap } from "./positions.mjs?v=20261012-2";
 import { mountIntegration } from "./integration.mjs?v=20261012-1";
 
 await loadLocales();
@@ -19,6 +19,11 @@ const workspace = document.querySelector(".workspace");
 const statusStrip = document.querySelector("#status-strip");
 const homeButton = document.querySelector("#home-button");
 const configurationButton = document.querySelector("#configuration-button");
+if (embedded) {
+  const actions = document.querySelector("#embedded-actions");
+  actions.append(connection, configurationButton);
+  actions.hidden = false;
+}
 let navigationLocked = false;
 const emergencyButton = document.querySelector("#emergency-button");
 let printer = null;
@@ -125,6 +130,17 @@ function applyThemeMode(mode, persist=true) {
 applyThemeMode(themeMode,false);
 themeButton.addEventListener("click",()=>{const modes=["system","light","dark"]; applyThemeMode(modes[(modes.indexOf(themeMode)+1)%modes.length]);});
 systemTheme.addEventListener("change",()=>{if(themeMode === "system")applyThemeMode("system",false);});
+if (embedded) window.addEventListener("message", event => {
+  if (event.origin !== window.location.origin || event.source !== window.parent || event.data?.type !== "kcw-appearance") return;
+  if (["dark", "light"].includes(event.data.theme)) applyThemeMode(event.data.theme, false);
+  const locale = String(event.data.language || "").toLowerCase().split(/[-_]/)[0];
+  if (["de", "en"].includes(locale)) {
+    setLocale(locale, false);
+    applyTranslations();
+    integrationUi.render();
+  }
+});
+
 
 function setSteps(title, labels) {
   document.querySelector("#rail-title").innerHTML = title;
