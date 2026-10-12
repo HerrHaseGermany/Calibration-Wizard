@@ -8,7 +8,12 @@ from types import SimpleNamespace
 import pytest
 from calibration_wizard.api import create_app
 from calibration_wizard.mainsail_build import deploy, patch_source, restore
-from calibration_wizard.mainsail_integration import MANIFEST, MainsailIntegration, migrate_state
+from calibration_wizard.mainsail_integration import (
+    MANIFEST,
+    REVISION,
+    MainsailIntegration,
+    migrate_state,
+)
 from calibration_wizard.printer import MockPrinter
 from calibration_wizard.settings import Settings
 from fastapi.testclient import TestClient
@@ -54,6 +59,23 @@ def test_unsupported_version_cannot_be_repaired(tmp_path):
     current = MainsailIntegration(target, state, True).status()
     assert not current["supported"]
     assert not current["can_repair"]
+
+
+def test_previous_integration_revision_requires_repair_even_with_intact_assets(tmp_path):
+    target, state, build = fixture(tmp_path)
+    deploy(build, target, state, "v2.19.0")
+    manifest_path = target / MANIFEST
+    manifest = json.loads(manifest_path.read_text())
+    manifest["revision"] = REVISION - 1
+    manifest_path.write_text(json.dumps(manifest))
+
+    integration = MainsailIntegration(target, state, True)
+    current = integration.status()
+    assert not current["healthy"]
+    assert current["can_repair"]
+
+    deploy(build, target, state, "v2.19.0")
+    assert integration.status()["healthy"]
 
 
 def test_state_migration_preserves_original_backup_and_restore(tmp_path):

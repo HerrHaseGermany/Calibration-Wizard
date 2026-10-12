@@ -231,7 +231,9 @@ a { color:var(--accent); }
 .panel-heading svg { width:24px; height:24px; fill:currentColor; flex-shrink:0; color:var(--muted); }
 .panel-content { padding:16px; }
 .embedded body { background:transparent; min-height:0; }
-.embedded { overflow:hidden; }
+:root.embedded { overflow:hidden; background:transparent; color-scheme:normal; }
+:root.embedded[data-theme="dark"] :is(.workspace, dialog) { color-scheme:dark; }
+:root.embedded[data-theme="light"] :is(.workspace, dialog) { color-scheme:light; }
 .embedded body { overflow:hidden; }
 .embedded .filament-dialog { position:fixed; top:calc(var(--host-visible-top,0px) + 16px); bottom:auto; margin:0 auto; max-height:max(120px,calc(var(--host-visible-height,100vh) - 32px)); }
 .embedded .shell { min-height:0; }
