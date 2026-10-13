@@ -67,8 +67,27 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
       keepHot.classList.add("hidden");
       setText(errorBox, () => error.message);
       errorBox.classList.remove("hidden");
-
+      updatePrintLock();
     };
+    let printLocked = false;
+    const updatePrintLock = () => {
+      if (disposed) return;
+      const printing = getPrinter()?.print_state === "printing";
+      selection.inert = printing;
+      if (printing) {
+        confirm.disabled = true;
+        keepHot.disabled = true;
+        setText(errorBox, () => t("ui.wizard_blocked_by_print"));
+        errorBox.classList.remove("hidden");
+      } else if (printLocked) {
+        confirm.disabled = !["selection", "swap", "ready"].includes(stage);
+        keepHot.disabled = false;
+        errorBox.classList.add("hidden");
+      }
+      printLocked = printing;
+    };
+    window.addEventListener("printerstatuschange", updatePrintLock);
+    updatePrintLock();
     const poll = async () => {
       if (disposed || !["heating", "ready"].includes(stage)) return;
       try {
@@ -128,12 +147,13 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
       if (close.disabled) return;
       close.disabled = true;
       clearTimeout(timer);
-      if (startedHeating && !leaveHeaterOn) {
+      if (startedHeating && !leaveHeaterOn && getPrinter()?.print_state !== "printing") {
         stage = "closing";
         try { await request("heat", {temperature: 0}); }
         catch (error) { showFailure(error); return; }
       }
       disposed = true;
+      window.removeEventListener("printerstatuschange", updatePrintLock);
       dialog.close();
       dialog.remove();
       setNavigationLocked(false);
@@ -144,7 +164,7 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
       if (stage === "complete") closeDialog(true);
     });
     confirm.addEventListener("click", async () => {
-      if (confirm.disabled) return;
+      if (confirm.disabled || getPrinter()?.print_state === "printing") return;
       if (stage === "selection") {
         if (!currentTemperature.reportValidity() || (mode === "change" && !newTemperature.reportValidity())) return;
         temperature = Number(currentTemperature.value);
@@ -194,7 +214,7 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
           dialog.querySelector("#filament-hot-note").classList.remove("hidden");
         }
         close.disabled = false;
-
+        updatePrintLock();
       } catch (error) { showFailure(error); }
     });
 

@@ -216,6 +216,7 @@ class ExtruderWizard:
             (WizardState.VERIFYING,) if verification else (WizardState.WAITING_FOR_MEASUREMENT,)
         )
         session = self._require(*allowed)
+        await self._safe_snapshot()
         try:
             result = calculate_rotation_distance(
                 session.old_rotation_distance
@@ -252,6 +253,7 @@ class ExtruderWizard:
 
     async def measure_again(self) -> WizardSession:
         session = self._require(WizardState.CALCULATED, WizardState.APPLIED)
+        await self._safe_snapshot()
         session.result = None
         session.save_token = None
         session.state = WizardState.READY
@@ -310,6 +312,11 @@ class ExtruderWizard:
                 "Cannot cancel while the synchronous extrusion command is running",
                 message_key="ui.cannot_cancel_while_the_synchronous_extrusion_command_is_running",
             )
+        snapshot = await self.printer.snapshot()
+        if snapshot.print_state in {"printing", "paused"}:
+            session.state = WizardState.CANCELLED
+            session.save_token = None
+            return session
         if session.save_token and session.state in {WizardState.APPLIED, WizardState.COMPLETE}:
             await self._safe_snapshot()
             await self.printer.set_rotation_distance(

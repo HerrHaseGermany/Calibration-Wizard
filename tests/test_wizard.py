@@ -126,3 +126,27 @@ async def test_extruder_calibration_is_blocked_during_print():
 
     with pytest.raises(WizardError, match="blocked while a print"):
         await wizard.start(120, 100)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("print_state", ["printing", "paused"])
+async def test_remote_print_blocks_measurement_and_retry_but_allows_cancel(print_state):
+    wizard, printer = await heated_wizard()
+    await wizard.extrude()
+    printer.data.print_state = print_state
+    with pytest.raises(WizardError, match="active or paused"):
+        await wizard.measurement(24)
+    assert wizard.session.state == WizardState.WAITING_FOR_MEASUREMENT
+
+    printer.data.print_state = "standby"
+    await wizard.measurement(24)
+    await wizard.apply()
+    rotation_distance = printer.data.rotation_distance
+    printer.data.print_state = print_state
+    with pytest.raises(WizardError, match="active or paused"):
+        await wizard.measure_again()
+    await wizard.cancel()
+    assert wizard.session.state == WizardState.CANCELLED
+    assert wizard.session.save_token is None
+    assert printer.data.rotation_distance == rotation_distance
+    assert printer.data.print_state == print_state

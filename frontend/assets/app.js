@@ -1,7 +1,7 @@
-import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261011-1";
+import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261013-1";
 import { renderXyzPage } from "./wizards/xyz/frontend.mjs?v=20261011-1";
-import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261012-4";
-import { adjustment, positionMap } from "./positions.mjs?v=20261012-4";
+import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261013-1";
+import { adjustment, positionMap } from "./positions.mjs?v=20261013-1";
 import { mountIntegration } from "./integration.mjs?v=20261012-3";
 
 await loadLocales();
@@ -105,7 +105,25 @@ function printerReadinessNotice() {
   return `<aside class="printer-readiness" role="alert"><div><strong>${msg("ui.klipper_is_not_ready")}</strong><p>${copy}</p>${detail}</div>${link}</aside>`;
 }
 
+function wizardBlockedByPrint() {
+  return Boolean(activeWizard && (printer?.print_state === "printing" ||
+    (activeWizard !== "filament" && printer?.print_state === "paused")));
+}
+
+function updateWizardPrintLock() {
+  const blocked = wizardBlockedByPrint();
+  // inert also prevents keyboard input, preserving each step's disabled controls.
+  panel.inert = blocked;
+  document.querySelector("#print-block").classList.toggle("hidden", !blocked);
+  document.querySelector("#print-block-cancel").disabled = navigationLocked;
+}
+
+document.querySelector("#print-block-cancel").addEventListener("click", async () => {
+  try { await returnHome(); } catch (error) { showError(error); }
+});
+
 function setOverviewState(current) {
+  updateWizardPrintLock();
   workspace.classList.remove("filament-mode");
   isConfigurationOverview = false;
   isConfigurationPage = false;
@@ -303,6 +321,7 @@ async function returnHome() {
 }
 
 function updateNavigationAvailability() {
+  updateWizardPrintLock();
   configurationButton.disabled = navigationLocked || (!isConfigurationPage && (!printerIsReady() || ["printing", "paused"].includes(printer?.print_state)));
   const label = () => t(isConfigurationPage ? "navigation.overview" : "configuration.title");
   setTranslatedAttribute(configurationButton, "title", label);
@@ -379,6 +398,9 @@ function showError(message) {
 function clearError() { notice.classList.add("hidden"); }
 
 async function api(path, body) {
+  if (wizardBlockedByPrint() && !path.endsWith("/cancel") && body?.action !== "cancel") {
+    throw new LocalizedError("ui.wizard_blocked_by_print");
+  }
   clearError();
   const response = await fetch(new URL(path, base), {
     method: "POST",
@@ -1062,6 +1084,7 @@ function updateStatus(data) {
   const previousReadiness = printerReadinessKey();
   const previousSessionState = session?.state;
   printer = data.printer;
+  window.dispatchEvent(new Event("printerstatuschange"));
   updateNavigationAvailability();
   if (activeWizard === "extruder" && data.session) session = data.session;
   if (activeWizard && activeWizard !== "extruder" && data.calibrations?.[activeWizard]) session = data.calibrations[activeWizard];

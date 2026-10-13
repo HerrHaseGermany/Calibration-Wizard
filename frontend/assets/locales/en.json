@@ -1,4 +1,5 @@
 {
+  "ui.wizard_blocked_by_print": "A print is running or paused. The wizard is locked; you can only cancel it. Cancelling the wizard leaves the print running.",
   "actions.back": "Back",
   "actions.cancel": "Cancel",
   "actions.done": "Done",

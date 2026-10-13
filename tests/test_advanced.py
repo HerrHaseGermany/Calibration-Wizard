@@ -276,17 +276,19 @@ async def test_flow_calculation_remains_available_while_printer_is_offline():
 
 
 @pytest.mark.asyncio
-async def test_pressure_advance_cannot_be_abandoned_during_test_print():
+async def test_pressure_advance_cancel_during_test_print_leaves_printer_untouched():
     printer = MockPrinter()
     manager = CalibrationManager(printer)
     await manager.start("pressure_advance", {"drive": "direct"})
     await manager.action("pressure_advance", "prepare", {}, None)
     printer.data.print_state = "printing"
 
-    with pytest.raises(WizardError, match="Testdruck"):
-        await manager.action("pressure_advance", "cancel", {}, None)
+    commands = list(printer.gcodes)
+    await manager.action("pressure_advance", "cancel", {}, None)
 
-    assert manager.sessions["pressure_advance"].state == "PRINT_TOWER"
+    assert manager.sessions["pressure_advance"].state == "CANCELLED"
+    assert printer.gcodes == commands
+    assert printer.data.print_state == "printing"
 
 
 @pytest.mark.asyncio
@@ -552,3 +554,47 @@ async def test_quad_gantry_requires_exactly_four_probe_points(tmp_path: Path):
                 "points": [{"x": 20, "y": 20}] * 3,
             },
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("print_state", ["printing", "paused"])
+@pytest.mark.parametrize("wizard,action", [
+    ("flow", "calculate"),
+    ("pid", "run"),
+    ("bed_mesh", "home"),
+    ("probe_offset", "adjust"),
+    ("pressure_advance", "calculate"),
+    ("pressure_advance", "apply"),
+    ("pressure_advance", "save"),
+])
+async def test_remote_print_blocks_every_open_calibration_action(print_state, wizard, action):
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    session = await manager.start(wizard, {})
+    previous_state = session.state
+    commands = list(printer.gcodes)
+    printer.data.print_state = print_state
+
+    with pytest.raises(WizardError) as error:
+        await manager.action(wizard, action, {}, None)
+
+    assert error.value.message_key == "ui.the_action_is_blocked_during_a_print_or_pause"
+    assert session.state == previous_state
+    assert printer.gcodes == commands
+    await manager.action(wizard, "cancel", {}, None)
+    assert session.state == "CANCELLED"
+    assert printer.gcodes == commands
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wizard", ["probe_offset", "bed_screws"])
+@pytest.mark.parametrize("print_state", ["printing", "paused"])
+async def test_remote_print_cancel_does_not_abort_printer_adjustment(wizard, print_state):
+    printer = MockPrinter()
+    manager = CalibrationManager(printer)
+    session = await manager.start(wizard, {})
+    session.state = "ADJUSTING"
+    printer.data.print_state = print_state
+    await manager.action(wizard, "cancel", {}, None)
+    assert session.state == "CANCELLED"
+    assert printer.gcodes == []

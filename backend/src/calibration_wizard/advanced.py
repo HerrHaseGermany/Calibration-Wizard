@@ -223,6 +223,7 @@ class CalibrationManager:
             raise WizardError("Unbekannte Kalibrierung", message_key="ui.unknown_calibration")
         if wizard == "flow":
             snapshot = await self.printer.snapshot()
+            self._require_idle_print(snapshot)
         else:
             snapshot = await self._safe(
                 wizard,
@@ -322,6 +323,8 @@ class CalibrationManager:
             )
         async with lock:
             session = self._session(wizard)
+            if action != "cancel":
+                self._require_idle_print(await self.printer.snapshot())
             try:
                 if action == "cancel":
                     await self._cancel(session)
@@ -368,24 +371,29 @@ class CalibrationManager:
                 raise WizardError(exc) from exc
         return session
 
+    @staticmethod
+    def _require_idle_print(snapshot: PrinterSnapshot) -> None:
+        if snapshot.print_state in {"printing", "paused"}:
+            raise WizardError(
+                "Während eines Drucks oder einer Pause ist die Aktion gesperrt",
+                message_key="ui.the_action_is_blocked_during_a_print_or_pause",
+            )
+
     async def _cancel(self, session: CalibrationSession) -> None:
         if session.state in {"COMPLETE", "CANCELLED"}:
             raise WizardError(
                 "Diese Kalibrierung ist bereits beendet",
                 message_key="ui.this_calibration_has_already_ended",
             )
+        snapshot = await self.printer.snapshot()
+        if snapshot.print_state in {"printing", "paused"}:
+            # Close only the session: restoring values or ABORT would affect the print.
+            session.save_token = None
+            session.state = "CANCELLED"
+            return
         if session.wizard == "pressure_advance" and session.state in {
-            "PRINT_TOWER",
-            "CALCULATED",
-            "APPLIED",
+            "PRINT_TOWER", "CALCULATED", "APPLIED",
         }:
-            snapshot = await self.printer.snapshot()
-            if snapshot.print_state in {"printing", "paused"}:
-                raise WizardError(
-                    "Beende oder brich den Testdruck in Mainsail ab, bevor du die "
-                    "Pressure-Advance-Kalibrierung verlässt.",
-                    message_key="ui.finish_or_cancel_the_test_print_in_mainsail_before_leaving",
-                )
             await self._restore_pressure_advance_test(session)
         if session.wizard in {"probe_offset", "bed_screws"} and session.state == "ADJUSTING":
             await self.printer.run_gcode("ABORT")
