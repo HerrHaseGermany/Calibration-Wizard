@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {loadLocales, setLocale} from "../frontend/assets/i18n.js?v=20261010-9";
+import {loadLocales, setLocale} from "../frontend/assets/i18n.js?v=20261013-2";
 import {positionGrid, positionMap, adjustment} from "../frontend/assets/positions.mjs";
 
 await loadLocales(url => readFile(url, "utf8").then(JSON.parse));

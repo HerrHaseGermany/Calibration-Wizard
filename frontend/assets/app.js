@@ -1,7 +1,7 @@
 import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261013-1";
 import { renderXyzPage } from "./wizards/xyz/frontend.mjs?v=20261011-1";
-import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261013-1";
-import { adjustment, positionMap } from "./positions.mjs?v=20261013-1";
+import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261013-2";
+import { adjustment, positionMap } from "./positions.mjs?v=20261013-2";
 import { mountIntegration } from "./integration.mjs?v=20261012-3";
 
 await loadLocales();
@@ -139,7 +139,7 @@ setLocale(getLanguagePreference());
 language.addEventListener("change", () => { setLocale(language.value); applyTranslations(); integrationUi.render(); });
 applyTranslations();
 window.addEventListener("languagechange", () => {
-  if (getLanguagePreference() === "system") { setLocale("system"); applyTranslations(); }
+  if (getLanguagePreference() === "system") { setLocale("system", false); applyTranslations(); integrationUi.render(); }
 });
 
 const themeButton = document.querySelector("#theme-button");
@@ -179,12 +179,7 @@ if (embedded) window.addEventListener("message", event => {
       document.documentElement.style.setProperty(variable, color);
     }
   }
-  const locale = String(event.data.language || "").toLowerCase().split(/[-_]/)[0];
-  if (["de", "en"].includes(locale)) {
-    setLocale(locale, false);
-    applyTranslations();
-    integrationUi.render();
-  }
+  // Appearance messages must not override the browser or the manual language choice.
 });
 
 

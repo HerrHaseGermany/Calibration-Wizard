@@ -15,7 +15,7 @@ export default Vue.extend({
             }
         },
         appearanceKey(): string {
-            return `${this.$vuetify.theme.dark}:${this.$i18n.locale}:${this.$store.state.gui.uiSettings.primary}`
+            return `${this.$vuetify.theme.dark}:${this.$store.state.gui.uiSettings.primary}`
         },
     },
     watch: {
@@ -64,7 +64,6 @@ export default Vue.extend({
                 {
                     type: 'kcw-appearance',
                     theme: this.$vuetify.theme.dark ? 'dark' : 'light',
-                    language: this.$i18n.locale,
                     colors: {
                         primary: style.getPropertyValue('--color-primary').trim(),
                         primaryText: style.getPropertyValue('--v-btn-text-primary').trim(),

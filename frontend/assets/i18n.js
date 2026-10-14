@@ -19,7 +19,7 @@ export async function loadLocales(loader = async url => {
 export const getLocale = () => locale;
 export const getLanguagePreference = () => preference;
 
-export function resolveLocale(value, languages = globalThis.navigator?.languages || [globalThis.navigator?.language]) {
+export function resolveLocale(value, languages = globalThis.navigator?.languages?.length ? globalThis.navigator.languages : [globalThis.navigator?.language]) {
   if (["de", "en"].includes(value)) return value;
   for (const language of languages) {
     const candidate = String(language || "").toLowerCase().split(/[-_]/)[0];

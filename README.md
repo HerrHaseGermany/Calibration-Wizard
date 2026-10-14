@@ -82,7 +82,7 @@ cd Calibration-Wizard
 
 Then open `http://<printer>/tools/`. The independent UI and Repair action remain available at `http://<printer>/api/klipper-tools/`. See [the installation guide](docs/INSTALLATION.md) for nonstandard paths, authentication, update behavior, backups, restore, and troubleshooting.
 
-The installer automatically configures the Tools service, nginx routes and Mainsail extension for the standard layout. The extension builds in the background; allow several minutes on a small printer host. Wait for the build to finish, then reload Mainsail to see the Tools tab. It includes preloading, Mainsail theme/language synchronization, the responsive layout and content-based frame height without additional UI configuration. Build status and Repair are available in the independent UI; inspect build logs with:
+The installer automatically configures the Tools service, nginx routes and Mainsail extension for the standard layout. The extension builds in the background; allow several minutes on a small printer host. Wait for the build to finish, then reload Mainsail to see the Tools tab. It includes preloading, Mainsail theme synchronization, the responsive layout and content-based frame height without additional UI configuration. Build status and Repair are available in the independent UI; inspect build logs with:
 
 ```bash
 journalctl -u klipper-tools-mainsail-repair.service -n 100 --no-pager

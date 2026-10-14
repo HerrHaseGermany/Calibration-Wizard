@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
+import vm from "node:vm";
 import {loadLocales, t, msg, getLocale, getLanguagePreference, resolveLocale, setLocale, setText, applyTranslations, apiError} from "../frontend/assets/i18n.js";
 
 const catalogs = {};
@@ -92,4 +93,55 @@ test("browser modules share the same localization module instance", async () => 
   const app = await readFile(new URL("../frontend/assets/app.js",import.meta.url),"utf8");
   const positions = await readFile(new URL("../frontend/assets/positions.mjs",import.meta.url),"utf8");
   assert.equal(app.match(/from "(\.\/i18n\.js[^\"]*)"/)[1], positions.match(/from "(\.\/i18n\.js[^\"]*)"/)[1]);
+});
+
+test("browser language falls back to navigator.language when the preference list is empty", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  try {
+    for (const languages of [[], undefined]) {
+      Object.defineProperty(globalThis, "navigator", {configurable: true, value: {languages, language: "de-CH"}});
+      assert.equal(resolveLocale("system"), "de");
+    }
+  } finally {
+    if (original) Object.defineProperty(globalThis, "navigator", original);
+    else delete globalThis.navigator;
+  }
+});
+
+test("embedded appearance messages preserve automatic and manual language choices", async () => {
+  const app = await readFile(new URL("../frontend/assets/app.js", import.meta.url), "utf8");
+  const listeners = {};
+  const parent = {};
+  let selected = "system";
+  let locale = "de";
+  let browserLanguages = ["de-DE"];
+  let renders = 0;
+  const picker = {addEventListener: (type, handler) => { listeners[type] = handler; }};
+  const context = vm.createContext({
+    embedded: true,
+    window: {parent, location: {origin: "http://localhost"}, addEventListener: (type, handler) => { listeners[type] = handler; }},
+    document: {querySelector: () => picker, documentElement: {style: {setProperty() {}}}},
+    getLanguagePreference: () => selected,
+    setLocale: value => { selected = value; locale = resolveLocale(value, browserLanguages); },
+    applyTranslations() {}, applyThemeMode() {},
+    integrationUi: {render: () => { renders++; }},
+  });
+  vm.runInContext(app.slice(app.indexOf('const language = document.querySelector'), app.indexOf('const themeButton =')), context);
+  vm.runInContext(app.slice(app.indexOf('if (embedded) window.addEventListener("message"'), app.indexOf('function setSteps(')), context);
+  const appearance = () => listeners.message({source: parent, origin: "http://localhost", data: {type: "kcw-appearance", language: "en", theme: "dark"}});
+  appearance();
+  assert.equal(selected, "system");
+  assert.equal(locale, "de");
+  assert.equal(picker.value, "system");
+  browserLanguages = ["en-GB"];
+  listeners.languagechange();
+  assert.equal(locale, "en");
+  assert.equal(renders, 1);
+  picker.value = "de";
+  listeners.change();
+  appearance();
+  listeners.languagechange();
+  assert.equal(selected, "de");
+  assert.equal(locale, "de");
+  assert.equal(renders, 2);
 });
