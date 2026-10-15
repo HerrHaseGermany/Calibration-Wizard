@@ -65,6 +65,7 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
       confirm.disabled = true;
       close.disabled = false;
       keepHot.classList.add("hidden");
+      errorBox.classList.remove("print-status");
       setText(errorBox, () => error.message);
       errorBox.classList.remove("hidden");
       updatePrintLock();
@@ -77,11 +78,13 @@ export function renderFilamentPage({panel, base, getPrinter, setNavigationLocked
       if (printing) {
         confirm.disabled = true;
         keepHot.disabled = true;
-        setText(errorBox, () => t("ui.wizard_blocked_by_print"));
+        setText(errorBox, () => t("printer.status.printing"));
+        errorBox.classList.add("print-status");
         errorBox.classList.remove("hidden");
       } else if (printLocked) {
         confirm.disabled = !["selection", "swap", "ready"].includes(stage);
         keepHot.disabled = false;
+        errorBox.classList.remove("print-status");
         errorBox.classList.add("hidden");
       }
       printLocked = printing;

@@ -36,10 +36,12 @@ const lockSource = source.slice(source.indexOf("function wizardBlockedByPrint()"
 test("remote printing locks the open wizard and preserves its controls until the print ends", () => {
   const banner = {classList: {toggle: (name, hidden) => { banner.hidden = hidden; }}};
   const cancel = {};
+  const status = {};
   const panel = {controls: [{disabled: true}, {disabled: false}]};
   const context = vm.createContext({
     activeWizard: "extruder", printer: {print_state: "standby"}, navigationLocked: false,
-    panel, document: {querySelector: selector => selector === "#print-block" ? banner : cancel},
+    panel, t: key => key, setText: (element, text) => { element.text = text(); },
+    document: {querySelector: selector => selector === "#print-block" ? banner : selector === "#print-block-status" ? status : cancel},
   });
   vm.runInContext(lockSource, context);
   for (const printState of ["printing", "paused"]) {
@@ -48,6 +50,7 @@ test("remote printing locks the open wizard and preserves its controls until the
     assert.equal(panel.inert, true);
     assert.equal(banner.hidden, false);
     assert.equal(cancel.disabled, false);
+    assert.equal(status.text, printState === "printing" ? "printer.status.printing" : "printer.print.paused");
   }
   context.printer.print_state = "complete";
   context.updateWizardPrintLock();
@@ -90,10 +93,11 @@ test("remote printing also locks an open filament dialog", () => {
   const confirm = {disabled: false};
   const keepHot = {disabled: false};
   const selection = {};
+  const errorBox = {classList: {add() {}, remove() {}}};
   const context = vm.createContext({
     getPrinter: () => currentPrinter, disposed: false, stage: "selection",
-    confirm, keepHot, selection, errorBox: {classList: {add() {}, remove() {}}},
-    setText() {}, t: key => key,
+    confirm, keepHot, selection, errorBox,
+    setText: (element, text) => { element.text = text(); }, t: key => key,
   });
   vm.runInContext(filamentSource.slice(filamentSource.indexOf("    let printLocked = false;"), filamentSource.indexOf('    window.addEventListener("printerstatuschange"')) + '\nglobalThis.updatePrintLock = updatePrintLock;', context);
   currentPrinter.print_state = "printing";
@@ -101,6 +105,7 @@ test("remote printing also locks an open filament dialog", () => {
   assert.equal(selection.inert, true);
   assert.equal(confirm.disabled, true);
   assert.equal(keepHot.disabled, true);
+  assert.equal(errorBox.text, "printer.status.printing");
   currentPrinter.print_state = "paused";
   context.updatePrintLock();
   assert.equal(selection.inert, false);

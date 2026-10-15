@@ -1,4 +1,4 @@
-import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261013-1";
+import { renderFilamentPage } from "./wizards/filament/frontend.mjs?v=20261014-1";
 import { renderXyzPage } from "./wizards/xyz/frontend.mjs?v=20261011-1";
 import { getLanguagePreference, setLocale, t, msg, rich, setText, setTranslatedAttribute, applyTranslations, apiError, loadLocales, LocalizedError } from "./i18n.js?v=20261013-2";
 import { adjustment, positionMap } from "./positions.mjs?v=20261013-2";
@@ -115,6 +115,7 @@ function updateWizardPrintLock() {
   // inert also prevents keyboard input, preserving each step's disabled controls.
   panel.inert = blocked;
   document.querySelector("#print-block").classList.toggle("hidden", !blocked);
+  setText(document.querySelector("#print-block-status"), () => t(printer?.print_state === "paused" ? "printer.print.paused" : "printer.status.printing"));
   document.querySelector("#print-block-cancel").disabled = navigationLocked;
 }
 
@@ -394,7 +395,7 @@ function clearError() { notice.classList.add("hidden"); }
 
 async function api(path, body) {
   if (wizardBlockedByPrint() && !path.endsWith("/cancel") && body?.action !== "cancel") {
-    throw new LocalizedError("ui.wizard_blocked_by_print");
+    throw new LocalizedError(printer?.print_state === "paused" ? "printer.print.paused" : "printer.status.printing");
   }
   clearError();
   const response = await fetch(new URL(path, base), {

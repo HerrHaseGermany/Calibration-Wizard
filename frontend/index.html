@@ -7,7 +7,7 @@
     <title>Klipper Tools</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=20260929-6" />
     <script>document.documentElement.classList.toggle("embedded",window.self!==window.top);document.documentElement.dataset.theme=(localStorage.getItem("kcw-theme-mode")||"system")==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):localStorage.getItem("kcw-theme-mode");</script>
-    <link rel="stylesheet" href="assets/app.css?v=20261012-14" />
+    <link rel="stylesheet" href="assets/app.css?v=20261014-1" />
   </head>
   <body>
     <div class="shell">
@@ -44,9 +44,9 @@
             <div><span>Klipper</span><strong id="klipper-state"><span data-i18n="ui.unknown"></span></strong></div>
           </div>
           <aside id="integration-banner" class="notice hidden" role="status"></aside>
-          <aside id="print-block" class="notice hidden" role="alert">
-            <p data-i18n="ui.wizard_blocked_by_print"></p>
-            <button id="print-block-cancel" class="button ghost danger" type="button" data-i18n="actions.cancel"></button>
+          <aside id="print-block" class="notice print-status hidden" role="status">
+            <p id="print-block-status"></p>
+            <button id="print-block-cancel" class="button ghost danger" type="button" data-i18n="navigation.overview"></button>
           </aside>
           <div id="notice" class="notice hidden" role="alert"></div>
           <article class="panel">
@@ -59,6 +59,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="assets/app.js?v=20261013-2"></script>
+    <script type="module" src="assets/app.js?v=20261014-1"></script>
   </body>
 </html>
